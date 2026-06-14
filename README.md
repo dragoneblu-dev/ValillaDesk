@@ -44,12 +44,12 @@ The application is a true serverless Single Page Application (SPA).
 2. Double-click on `index.html` to open it in your browser.
 3. Click on **"Create New Workspace"** to initialize your working folder on your PC.
 
-⚠️ **Browser Compatibility:** Since VanillaDesk heavily relies on the modern *File System Access API* to physically write files to your hard drive, a Chromium-based browser is required (**Google Chrome, Microsoft Edge, Brave, Opera**). Browsers like Safari or Firefox do not yet fully support these APIs natively.
+⚠️ **Browser Compatibility:** Since VanillaDesk heavily relies on the modern *File System Access API* to physically write files to your hard drive, a Chromium-based browser is required (**Google Chrome, Microsoft Edge, Opera**). Browsers like Safari or Firefox do not yet fully support these APIs natively.
 
 📧 **Email:** [dragoneblu@gmail.com](mailto:dragoneblu@gmail.com)
 
 ## License
-This project is licensed under the **MIT License**. You are free to use, study, modify, and distribute it, even for commercial purposes. See the [LICENSE.txt](LICENSE) file for details.
+This project is licensed under the **MIT License**. You are free to use, study, modify, and distribute it, even for commercial purposes. See the [LICENSE](LICENSE) file for details.
 
 
 ---
@@ -87,7 +87,7 @@ L'applicazione è una vera Single Page Application (SPA) serverless.
 2. Fai doppio click su `index.html` per aprirlo nel tuo browser.
 3. Clicca su **"Crea Nuovo Workspace"** per inizializzare la cartella di lavoro sul tuo PC.
 
-⚠️ **Compatibilità Browser:** Poiché VanillaDesk sfrutta la moderna *File System Access API* per scrivere fisicamente i file sul tuo hard disk, è necessario utilizzare un browser basato su Chromium (**Google Chrome, Microsoft Edge, Brave, Opera**). Browser come Safari o Firefox non supportano ancora pienamente queste API in modo nativo.
+⚠️ **Compatibilità Browser:** Poiché VanillaDesk sfrutta la moderna *File System Access API* per scrivere fisicamente i file sul tuo hard disk, è necessario utilizzare un browser basato su Chromium (**Google Chrome, Microsoft Edge, Opera**). Browser come Safari o Firefox non supportano ancora pienamente queste API in modo nativo.
 
 ## Lavoriamo Insieme / Consulenza
 Ho pubblicato questo progetto open-source per condividere uno strumento utile con altri colleghi del settore IT e per dimostrare le mie competenze architetturali e di sviluppo.
@@ -97,4 +97,4 @@ Se la tua azienda ha bisogno di un consulente, di uno sviluppatore o di un esper
 📧 **Email:** [dragoneblu@gmail.com](mailto:dragoneblu@gmail.com)
 
 ## Licenza
-Questo progetto è rilasciato sotto licenza **MIT**. Sei libero di usarlo, studiarlo, modificarlo e distribuirlo, anche per scopi commerciali. Vedi il file [LICENSE.txt](LICENSE) per i dettagli.
+Questo progetto è rilasciato sotto licenza **MIT**. Sei libero di usarlo, studiarlo, modificarlo e distribuirlo, anche per scopi commerciali. Vedi il file [LICENSE](LICENSE) per i dettagli.
