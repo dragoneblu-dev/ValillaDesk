@@ -8,13 +8,13 @@
 ![AI Assisted](https://img.shields.io/badge/AI_Assisted_Development-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)
 
 ![VanillaDesk Banner](vanillaDesk.png)
-![Diario e Timeline](vanillaDesk2.png)
-![Code & Kamban](vanillaDesk3.png)
-
 
 VanillaDesk is not just a simple notepad. It’s a hybrid workspace that combines an **advanced WYSIWYG word processor** with a powerful **in-memory Relational Database Engine (RDBMS)**.
 
 Everything runs at lightning speed, entirely in your browser. No servers, no clouds, no subscriptions, no dependencies (Zero NPM, No React/Vue/Angular). Just pure, solid, and blazingly fast **Vanilla JavaScript**.
+
+![Diario e Timeline](vanillaDesk2.png)
+![Code & Kamban](vanillaDesk3.png)
 
 ## Why I Built VanillaDesk
 Working as an IT professional in **AMS (Application Management Services)**, I constantly found myself managing repetitive tasks, log queries, code snippets, and fragmented documentation. I needed a tool as fast as a notepad but as powerful as a relational database, one that I could run on corporate machines without installing servers or relying on external Clouds blocked by strict firewalls. That’s how VanillaDesk was born.
