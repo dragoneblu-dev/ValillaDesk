@@ -6,7 +6,7 @@
 ![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)
 ![Local First](https://img.shields.io/badge/Architecture-Local_First-success?style=for-the-badge)
 
-![VanillaDesk Banner](screenshot.png)
+![VanillaDesk Banner](vanillaDesk.png)
 
 VanillaDesk non è un semplice blocco note. È un ambiente di lavoro ibrido che unisce un **elaboratore di testi WYSIWYG avanzato** a un potente **motore di database relazionale (RDBMS) in-memory**. 
 
