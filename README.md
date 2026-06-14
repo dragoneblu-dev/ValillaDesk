@@ -5,6 +5,7 @@
 ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)
 ![Local First](https://img.shields.io/badge/Architecture-Local_First-success?style=for-the-badge)
+![AI Assisted](https://img.shields.io/badge/AI_Assisted_Development-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)
 
 ![VanillaDesk Banner](vanillaDesk.png)
 
@@ -38,6 +39,9 @@ L'applicazione è una vera Single Page Application (SPA) serverless.
 3. Clicca su **"Crea Nuovo Workspace"** per inizializzare la cartella di lavoro sul tuo PC.
 
 ⚠️ **Compatibilità Browser:** Poiché VanillaDesk sfrutta la moderna *File System Access API* per scrivere fisicamente i file sul tuo hard disk, è necessario utilizzare un browser basato su Chromium (**Google Chrome, Microsoft Edge, Brave, Opera**). Browser come Safari o Firefox non supportano ancora pienamente queste API in modo nativo.
+
+## Sviluppo AI-Assisted (Pair-Programming)
+Per la stesura di questo progetto ho adottato un approccio di sviluppo moderno basato sull'Intelligenza Artificiale. L'architettura software, le regole di business, il design del database in-memory e la UX sono frutto della mia visione e della mia esperienza in ambito AMS. I modelli LLM sono stati utilizzati come "Co-Pilot" per accelerare la stesura del codice boilerplate, ottimizzare gli algoritmi di sorting/filtering e rifinire l'interfaccia utente in CSS Vanilla, operando sempre sotto rigide direttive architetturali preimpostate.
 
 ## Lavoriamo Insieme / Consulenza
 Ho pubblicato questo progetto open-source per condividere uno strumento utile con altri colleghi del settore IT e per dimostrare le mie competenze architetturali e di sviluppo.
