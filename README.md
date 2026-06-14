@@ -49,7 +49,7 @@ The application is a true serverless Single Page Application (SPA).
 📧 **Email:** [dragoneblu@gmail.com](mailto:dragoneblu@gmail.com)
 
 ## License
-This project is licensed under the **MIT License**. You are free to use, study, modify, and distribute it, even for commercial purposes. See the [LICENSE.txt](LICENSE.txt) file for details.
+This project is licensed under the **MIT License**. You are free to use, study, modify, and distribute it, even for commercial purposes. See the [LICENSE.txt](LICENSE) file for details.
 
 
 ---
@@ -97,4 +97,4 @@ Se la tua azienda ha bisogno di un consulente, di uno sviluppatore o di un esper
 📧 **Email:** [dragoneblu@gmail.com](mailto:dragoneblu@gmail.com)
 
 ## Licenza
-Questo progetto è rilasciato sotto licenza **MIT**. Sei libero di usarlo, studiarlo, modificarlo e distribuirlo, anche per scopi commerciali. Vedi il file [LICENSE.txt](LICENSE.txt) per i dettagli.
+Questo progetto è rilasciato sotto licenza **MIT**. Sei libero di usarlo, studiarlo, modificarlo e distribuirlo, anche per scopi commerciali. Vedi il file [LICENSE.txt](LICENSE) per i dettagli.
