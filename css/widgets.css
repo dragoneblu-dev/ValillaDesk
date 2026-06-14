@@ -1,0 +1,296 @@
+/* =========================================================================
+   WIDGETS.CSS
+   Stili specifici per i Moduli Complessi e le Sandbox dell'Editor.
+   ========================================================================= */
+
+/* --- PROTEZIONE UI WIDGET (SANDBOX) --- */
+.adv-table-wrapper, 
+.block-citation, 
+.adv-journal-wrapper,
+.adv-widget-shell {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}
+
+.adv-widget-shell {
+    position: relative;
+    margin: 15px 0;
+    width: 100%;
+    max-width: 100%;
+}
+
+.adv-inline-shell {
+    display: inline;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Header Compatto (es. per le Citazioni) */
+.widget-header.compact-header {
+    padding: 2px 0 5px 0 !important;
+    border-bottom: none !important;
+}
+
+.widget-header.compact-header .widget-title {
+    font-size: 0.85rem !important;
+    color: var(--text-secondary) !important;
+}
+
+/* Modalità Lettura: Blocca click accidentali interni sui widget */
+.editor-container.read-mode .code-wrapper .code-content,
+.editor-container.read-mode .adv-widget-shell * {
+    pointer-events: none;
+}
+
+/* Aree delegate consentite alla modifica interna del TESTO */
+.adv-table-wrapper .adv-cell-text,
+.adv-table-wrapper .adv-cell-number input,
+.adv-table-wrapper .adv-cell-date input,
+.adv-table-wrapper .adv-url-edit,
+.code-wrapper pre,
+.block-citation .citation-body,
+.adv-journal-wrapper .journal-content,
+.widget-editable-area,
+.simple-table-wrapper td,
+.simple-table-wrapper th {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto !important;
+}
+
+/* Sblocchi in Modalità Lettura per elementi interattivi consentiti */
+.editor-container.read-mode .adv-widget-shell .widget-tools button,
+.editor-container.read-mode .adv-widget-shell .adv-cal-nav-bar button,
+.editor-container.read-mode .adv-widget-shell .adv-timeline-toolbar button,
+.editor-container.read-mode .adv-widget-shell .adv-cal-event-std,
+.editor-container.read-mode .adv-widget-shell .adv-cal-event-abs,
+.editor-container.read-mode .adv-widget-shell .adv-timeline-bar,
+.editor-container.read-mode .adv-widget-shell .adv-board-card,
+.editor-container.read-mode .adv-widget-shell .adv-select-pill,
+.editor-container.read-mode .adv-widget-shell .adv-cal-more-btn,
+.editor-container.read-mode .adv-widget-shell .adv-icon-btn,
+.editor-container.read-mode .adv-action-cell button,
+.editor-container.read-mode .adv-action-button-wrapper button,
+.editor-container.read-mode .adv-widget-shell .adv-scroll-container,
+.editor-container.read-mode .adv-widget-shell .adv-table-footer-controls button,
+.editor-container.read-mode .adv-widget-shell .adv-table-footer-controls .adv-add-btn,
+.editor-container.read-mode .adv-widget-shell .columns-opt-btn,
+.editor-container.read-mode .widget-type-audio audio,
+.editor-container.read-mode .widget-type-video iframe,
+.editor-container.read-mode .snippet-copy-btn { 
+    pointer-events: auto !important;
+}
+
+/* FIX UX 3: Soft-Delete visivo per i Widget */
+.adv-widget-selected {
+    box-shadow: 0 0 0 3px var(--danger-color) !important;
+    border-radius: 6px;
+    transition: box-shadow 0.2s ease;
+}
+
+/* --- CITAZIONI (TRANSCLUSION) --- */
+.adv-widget-shell.block-citation { 
+    border-left: 4px solid var(--accent-color); 
+    background: rgba(0, 0, 0, 0.01); 
+    padding: 0 10px;
+    border-radius: 4px;
+    background-color: color-mix(in srgb, var(--hl-c7), transparent 80%);
+}
+.adv-widget-shell.block-citation .widget-body {
+    font-style: italic;
+    opacity: 0.85;
+    padding: 5px 0 10px 0;
+}
+
+.adv-widget-shell.block-citation.collapsed .widget-body {
+    display: none !important;
+}
+
+blockquote.block-citation:not(.adv-widget-shell) { border: 1px solid var(--border-color); border-left: 4px solid var(--accent-color); margin: 15px 0; padding: 0; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); }
+blockquote.block-citation:not(.adv-widget-shell) .citation-header { background: var(--item-active); padding: 6px 10px; font-size: 0.75rem; font-weight: bold; color: var(--accent-color); cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); user-select: none; }
+blockquote.block-citation:not(.adv-widget-shell) .citation-header:hover { background: rgba(37, 99, 235, 0.2); }
+blockquote.block-citation:not(.adv-widget-shell) .citation-body { padding: 15px; font-size: 0.9em; opacity: 0.85; }
+
+/* --- CHECKLISTS --- */
+.editor-content ul.adv-checklist { list-style: none; padding-left: 4px; margin: 5px 0; width: 100%; }
+.adv-checklist-item { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
+.adv-checklist-cb { margin-top: 4px; cursor: pointer; width: 16px; height: 16px; flex-shrink: 0; }
+.checklist-text { flex: 1 1 0%; outline: none; min-width: 50px; }
+
+/* --- SEGNALIBRI (BOOKMARKS) --- */
+.adv-bookmark-marker { position: relative; display: inline-flex; cursor: pointer; vertical-align: middle; margin: 0 4px; }
+.adv-bookmark-marker .bookmark-icon { color: var(--tx-c4); display: inline-flex; align-items: center; justify-content: center; }
+
+/* --- SNIPPET COPIABILE (INLINE) --- */
+.adv-copy-snippet {
+    display: inline-flex;
+    align-items: center;
+    background: var(--item-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0;
+    margin: 0 4px;
+    vertical-align: middle;
+    font-size: 0.9em;
+    overflow: hidden;
+}
+
+.snippet-text {
+    padding: 2px 8px;
+    font-family: monospace;
+    color: var(--accent-color);
+    outline: none;
+    min-width: 20px;
+}
+
+.snippet-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 6px;
+    background: rgba(0,0,0,0.03);
+    border-left: 1px solid var(--border-color);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.snippet-copy-btn:hover {
+    background: var(--item-active);
+    color: var(--accent-color);
+}
+
+.snippet-copy-btn.copied {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+}
+
+[data-theme="dark"] .snippet-copy-btn { background: rgba(255,255,255,0.05); }
+[data-theme="notion-dark"] .snippet-copy-btn { background: rgba(255,255,255,0.05); }
+
+/* --- MINIMAPPA --- */
+#minimapContainer { width: 150px; background: var(--sidebar-bg); border-left: 1px solid var(--border-color); position: relative; overflow: hidden; flex-shrink: 0; user-select: none; }
+#minimapContentWrapper { position: absolute; top: 0; left: 0; transform-origin: top left; pointer-events: none; opacity: 0.8; }
+#minimapContent { font-size: var(--reading-font-size); line-height: 1.5; color: var(--text-primary); background: transparent; box-sizing: border-box; font-family: inherit; }
+#minimapViewport { position: absolute; width: 100%; background: rgba(150, 150, 150, 0.2); border: 1px solid rgba(150, 150, 150, 0.4); cursor: grab; z-index: 10; border-radius: 4px; }
+#minimapViewport:active { cursor: grabbing; background: rgba(150, 150, 150, 0.3); }
+[data-theme="dark"] #minimapViewport { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); }
+
+/* --- CORNICE RIDIMENSIONAMENTO IMMAGINI --- */
+/* FIX Z-INDEX: Abbassato a 90 per non sovrapporsi mai all'editor toolbar (100) o all'header (200) */
+#adv-image-resizer-overlay { position: absolute; border: 2px dashed var(--accent-color); z-index: 90; pointer-events: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5); }
+.adv-image-handle { position: absolute; width: 10px; height: 10px; background-color: var(--accent-color); border: 1px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.3); border-radius: 50%; pointer-events: auto; }
+.adv-image-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.adv-image-handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.adv-image-handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.adv-image-handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.adv-image-handle.w  { top: calc(50% - 6px); left: -6px; cursor: ew-resize; border-radius: 2px; height: 16px; }
+.adv-image-handle.e  { top: calc(50% - 6px); right: -6px; cursor: ew-resize; border-radius: 2px; height: 16px; }
+#adv-image-resizer-tooltip { position: absolute; top: -25px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-family: monospace; pointer-events: none; white-space: nowrap; }
+
+/* --- DRAG INDICATOR WIDGETS --- */
+#adv-drop-indicator { position: absolute; height: 3px; background-color: var(--accent-color); z-index: 10000; pointer-events: none; transition: top 0.05s linear, left 0.05s linear, width 0.05s linear; border-radius: 2px; }
+#adv-drop-indicator::before { content: ''; position: absolute; left: -6px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background-color: var(--accent-color); }
+
+/* --- WIDGET DIARIO/LOG --- */
+.adv-journal-wrapper { position: relative; margin: 15px 0; width: 100%; font-family: inherit; user-select: none; }
+.editor-content .adv-journal-list, .adv-journal-list { list-style: none !important; padding-left: 0 !important; margin: 0 !important; }
+.journal-date-node { margin-bottom: 10px; }
+.journal-date-header { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-weight: bold; color: var(--accent-color); font-size: 1.1rem; margin-bottom: 5px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; }
+.journal-date-header:hover { opacity: 0.8; }
+.journal-toggle { display: inline-flex; align-items:center; transition: transform 0.2s ease; }
+.journal-date-node.collapsed .journal-toggle { transform: rotate(-90deg); }
+.journal-date-node.collapsed .journal-time-list { display: none; }
+.journal-time-list { list-style: none; padding-left: 15px; margin: 0; border-left: 2px solid var(--border-color); margin-left: 5px; }
+.journal-time-node { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; position: relative; transform-origin: top center; }
+@keyframes vanishTaskLong { 0% { opacity: 1; max-height: 500px; margin-bottom: 6px; transform: scaleY(1); } 60% { opacity: 0.3; max-height: 500px; margin-bottom: 6px; transform: scaleY(1); } 100% { opacity: 0; max-height: 0; margin-bottom: 0; padding: 0; transform: scaleY(0); border: none; } }
+.journal-time-node.vanishing { animation: vanishTaskLong 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; overflow: hidden; }
+.journal-time-node.vanishing .journal-content { pointer-events: none; }
+.journal-time-node.vanishing .journal-time-label { pointer-events: auto; }
+.journal-time-label { font-size: 0.75rem; font-family: monospace; color: var(--text-secondary); background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 4px; margin-top: 2px; flex-shrink: 0; min-width: 45px; text-align: center; cursor: pointer; transition: all 0.2s; user-select: none; }
+.journal-time-label:hover { filter: brightness(0.95); }
+.journal-time-label.hidden-time { color: transparent; border-color: transparent; background: transparent; }
+.journal-time-label.hidden-time:hover { background: rgba(0,0,0,0.05); }
+.journal-time-label.completed { background: #22c55ea0 !important; color: white !important; border-color: rgba(34, 197, 94, 0.5) !important; }
+.journal-content { flex: 1; outline: none; min-height: 24px; padding-top: 2px; cursor: text; user-select: text; transition: opacity 0.3s; }
+.journal-content:empty:before { content: attr(placeholder); color: var(--text-secondary); opacity: 0.5; pointer-events: none; }
+
+/* NUOVO: BOTTONE PRIORITA' NEL GAP VUOTO */
+.journal-priority-btn {
+    position: absolute;
+    left: -14px; /* Si sovrappone perfettamente allo spazio vuoto */
+    top: 2px;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    color: var(--text-secondary);
+    background: transparent;
+    border-radius: 3px;
+    transition: opacity 0.2s, background 0.2s;
+    pointer-events: auto;
+}
+.journal-time-node:hover .journal-priority-btn {
+    opacity: 0.4;
+}
+.journal-priority-btn:hover {
+    opacity: 1 !important;
+    background: var(--item-hover);
+}
+.journal-priority-btn.has-priority {
+    opacity: 1;
+}
+.journal-priority-btn.prio-high { color: var(--danger-color); }
+.journal-priority-btn.prio-low { color: var(--tx-c7); /* Un bel blu/azzurro per la bassa priorità */ }
+
+/* --- BARRA DI RICERCA DIARIO/LOG --- */
+.journal-search-wrapper { margin-bottom: 10px; position: relative; width: 100%; }
+.journal-search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); opacity: 0.7; pointer-events: none; }
+.journal-search-input { width: 100%; box-sizing: border-box !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 0.85rem; padding: 8px 10px 8px 32px !important; border: 1px solid var(--border-color); background: var(--bg-color); border-radius: 6px; color: var(--text-primary); outline: none; transition: all 0.2s ease; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02); }
+.journal-search-input:focus { border-color: var(--accent-color); background: var(--bg-color); box-shadow: inset 0 1px 2px rgba(0,0,0,0.02), 0 0 0 3px rgba(37, 99, 235, 0.1); }
+[data-theme="dark"] .journal-search-input, [data-theme="notion-dark"] .journal-search-input { background: rgba(0, 0, 0, 0.2); }
+
+/* --- CURSORI MULTIPLI (Ctrl+D) --- */
+.adv-multi-cursor { background-color: rgba(37, 99, 235, 0.2); box-shadow: 0 -2px 0 var(--accent-color) inset; color: inherit; }
+.adv-multi-cursor.master { background-color: rgba(37, 99, 235, 0.4); }
+
+/* --- WIDGET COLONNE --- */
+.adv-columns-container-wrap { position: relative; margin: 15px 0; padding: 15px 10px 10px 10px; border: 1px solid transparent; border-radius: 6px; transition: border-color 0.2s; background: rgba(0,0,0,0.01); }
+.adv-columns-container-wrap:hover, .adv-columns-container-wrap:focus-within { border-color: var(--border-color); background: rgba(0,0,0,0.02); }
+.columns-opt-btn { position: absolute; top: -12px; right: -12px; opacity: 0; pointer-events: none; z-index: 100; background: var(--sidebar-bg); border: 1px solid var(--border-color); border-radius: 50%; padding: 6px; color: var(--text-secondary); display: flex; align-items: center; justify-content: center; transition: opacity 0.2s, transform 0.1s; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.adv-columns-container-wrap:hover .columns-opt-btn, .adv-columns-container-wrap:focus-within .columns-opt-btn { opacity: 1; pointer-events: auto !important; cursor: pointer; }
+.columns-opt-btn:hover { transform: scale(1.1); color: var(--accent-color); background: var(--item-hover); }
+
+.adv-columns-continuous { column-gap: 30px; column-width: 250px; width: 100%; outline: none; }
+
+/* FIX ALLINEAMENTO COLONNE INDIPENDENTI:
+   Rimosso il grid-column-gap per far coincidere perfettamente le percentuali
+   del CSS Grid con i calcoli assoluti del JS per i resizer.
+   Il gap visivo è gestito tramite padding sulle singole colonne. */
+.adv-columns-independent { display: grid; width: 100%; position: relative; }
+.adv-columns-independent > div.col-box { 
+    outline: none; 
+    min-height: 2em; 
+    min-width: 0; 
+    word-wrap: break-word; 
+    padding: 0 15px; 
+    box-sizing: border-box; 
+}
+.adv-columns-independent > div.col-box:first-child { padding-left: 0; }
+.adv-columns-independent > div.col-box:last-child { padding-right: 0; }
+
+.col-resizer { position: absolute; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 10; opacity: 0; background-color: var(--accent-color); transition: opacity 0.2s; transform: translateX(-50%); }
+.adv-columns-independent:hover .col-resizer { opacity: 0.1; }
+.adv-columns-independent .col-resizer:hover, .adv-columns-independent .col-resizer.resizing { opacity: 0.5; }
+
+@media (max-width: 768px) {
+    .adv-columns-independent { grid-template-columns: 1fr !important; grid-row-gap: 30px; }
+    .adv-columns-independent > div.col-box { padding: 0 !important; }
+    .col-resizer { display: none !important; }
+}
+
+.highlighted-target { transition: box-shadow 0.3s ease; }

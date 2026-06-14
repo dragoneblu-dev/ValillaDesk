@@ -1,0 +1,83 @@
+/* Wrapper Principale del Codice */
+.editor-content div .code-wrapper,
+.editor-content .code-wrapper,
+.widget-type-code {
+    position: relative;
+    margin: 15px 0;
+    border: none;
+    background: transparent;
+    min-width: 100%;
+}
+
+.widget-type-code .widget-body {
+    padding: 0 !important;
+}
+
+/* Area di Testo (PRE) - VISTA ESPANSA (Default) */
+.editor-content pre.code-content,
+.widget-type-code pre.code-content {
+    display: block;
+    margin: 0;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    padding: 15px;
+    outline: none;
+    color: var(--code-text);
+    background: var(--code-bg);
+    font-family: "Menlo", "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 60px;
+    box-sizing: border-box;
+    tab-size: 4;
+}
+
+/* VISTA COLLASSATA */
+.code-wrapper.collapsed pre.code-content,
+.widget-type-code.collapsed pre.code-content {
+    height: 50px !important;
+    min-height: 50px !important;
+    max-height: 50px !important;
+    overflow: hidden !important;
+    padding-top: 15px !important; /* Mantiene coerente la spaziatura alta */
+    padding-bottom: 0 !important;
+}
+
+.widget-type-code.collapsed .widget-body {
+    position: relative;
+}
+
+/* Sfumatura al fondo quando il codice è lungo e collassato */
+.widget-type-code.collapsed .widget-body::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 1px;
+    right: 1px;
+    height: 25px;
+    background: linear-gradient(to bottom, transparent, var(--code-bg));
+    pointer-events: none;
+    border-radius: 0 0 6px 6px;
+}
+
+/* Pulsanti Azione Legacy (se presenti in vecchie note non aggiornate) */
+.code-action-btn {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.code-action-btn:hover {
+    background: var(--item-hover);
+    color: var(--text-primary);
+}

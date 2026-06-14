@@ -1,0 +1,822 @@
+/* --- INTEGRAZIONE FONT CUSTOM LOCALE --- */
+@font-face {
+    font-family: 'EasyReading PRO';
+    src: url('../ttf/EasyReadingPRO.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+* {
+    box-sizing: border-box;
+    outline: none;
+}
+
+/* FIX: Utilizzo di dvh per Mobile e strict hidden overflow globale */
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg-color);
+    color: var(--text-primary);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    touch-action: none;
+}
+
+/* FIX: Ancoraggio Header fisso */
+header {
+    background: var(--sidebar-bg);
+    height: 50px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 200;
+    touch-action: none;
+}
+
+.brand {
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-pill {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    transition: all 0.3s;
+    user-select: none;
+}
+
+.status-saved {
+    background-color: #e5e7eb;
+    color: #6b7280;
+}
+
+.status-saving {
+    background-color: #fef08a;
+    color: #854d0e;
+}
+
+.status-error {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+[data-theme="dark"] .status-saved {
+    background-color: #374151;
+    color: #9ca3af;
+}
+
+[data-theme="dark"] .status-saving {
+    background-color: #713f12;
+    color: #fef08a;
+}
+
+[data-theme="dark"] .status-error {
+    background-color: #7f1d1d;
+    color: #fca5a5;
+}
+
+.controls-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.separator {
+    width: 1px;
+    height: 20px;
+    background: var(--border-color);
+    margin: 0 5px;
+}
+
+/* Buttons */
+.icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 5px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon-btn:hover {
+    background: var(--item-hover);
+    color: var(--text-primary);
+}
+
+.icon-btn.active {
+    background: var(--item-active);
+    color: var(--accent-color);
+}
+
+.icon-btn.danger:hover {
+    background: #fee2e2;
+    color: var(--danger-color);
+}
+
+.adv-icon-btn.danger {
+    color: var(--danger-color);
+}
+
+.btn {
+    padding: 5px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--sidebar-bg);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+}
+
+.btn:hover {
+    background: var(--item-hover);
+}
+
+.btn-primary {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn-editing {
+    background-color: rgba(37, 99, 235, 0.1);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    font-weight: bold;
+}
+
+/* Hamburger Menu */
+.main-menu-btn {
+    width: 34px;
+    height: 34px;
+}
+
+.main-menu-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 5px;
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    width: 220px;
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+    z-index: 1000;
+}
+
+.menu-item {
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.menu-item:hover {
+    background: var(--item-hover);
+}
+
+.menu-item-row {
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.separator-h {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+}
+
+/* Layout */
+.layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden; 
+}
+
+/* Sidebar */
+aside {
+    width: var(--sidebar-width);
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    transition: margin-left 0.3s;
+    position: relative;
+    touch-action: pan-y; 
+}
+
+aside.collapsed {
+    margin-left: calc(var(--sidebar-width) * -1);
+}
+
+.sidebar-resizer {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 100;
+    background: transparent;
+}
+
+/* Search Box */
+.search-box {
+    padding: 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.search-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.search-input {
+    width: 100%;
+    padding: 6px 85px 6px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    color: var(--text-primary);
+}
+
+.search-controls {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.search-counter {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-right: 4px;
+    pointer-events: none;
+}
+
+.search-nav-btn, .search-clear-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+}
+
+.search-nav-btn:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.search-clear-btn {
+    margin-left: 2px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    width: 18px;
+    height: 18px;
+}
+
+.search-clear-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger-color);
+}
+
+/* --- NUOVE TABS SIDEBAR (NOTION STYLE) --- */
+.sidebar-tabs-container {
+    display: flex;
+    gap: 2px;
+    padding: 8px 10px;
+    /*border-bottom: 1px solid var(--border-color);*/
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+    align-items: center;
+}
+.sidebar-tabs-container::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+
+.sidebar-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.sidebar-tab:hover {
+    background: var(--item-hover);
+    color: var(--text-primary);
+}
+
+.sidebar-tab.active {
+    background: var(--item-active);
+    color: var(--accent-color);
+}
+
+/* Nasconde le etichette testuali di default */
+.sidebar-tab span.tab-label {
+    display: none;
+}
+
+/* Mostra l'etichetta testuale SOLO per la scheda attiva */
+.sidebar-tab.active span.tab-label {
+    display: inline;
+}
+
+.sidebar-tools {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    padding-left: 5px;
+}
+
+/* Tree Scroll */
+.tree-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 5px;
+    position: relative;
+}
+
+.tree-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.tree-scroll::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.tree-scroll::-webkit-scrollbar-thumb {
+    background: rgba(150, 150, 150, 0.3);
+    border-radius: 4px;
+}
+
+.tree-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+[data-theme="dark"] .tree-scroll::-webkit-scrollbar-thumb,
+[data-theme="notion-dark"] .tree-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.tree-scroll.drag-over-root {
+    background: rgba(37, 99, 235, 0.05);
+    box-shadow: inset 0 0 0 2px var(--accent-color);
+}
+
+/* Tree Nodes */
+.node-wrapper {
+    margin-bottom: 2px;
+}
+
+.node-content {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+    position: relative;
+}
+
+.node-content:hover {
+    background: var(--item-hover);
+}
+
+.node-content.active {
+    background: var(--item-active);
+    color: var(--accent-color);
+    font-weight: 500;
+}
+
+.node-content.marked {
+    border-left: 3px solid var(--marked-border);
+}
+
+.tree-ghost-node {
+    opacity: 0.5;
+    font-style: italic;
+}
+
+.node-add-btn {
+    opacity: 0;
+    visibility: hidden;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    border-radius: 4px;
+    margin-left: auto;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.node-content.active .node-add-btn,
+.node-content:hover .node-add-btn {
+    opacity: 0.6;
+    visibility: visible;
+}
+
+.node-add-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+    opacity: 1 !important;
+    color: var(--accent-color);
+}
+
+.node-content.drag-middle {
+    background: var(--item-hover);
+    border: 1px dashed var(--accent-color);
+}
+
+.node-content.drag-top {
+    border-top: 2px solid var(--accent-color);
+}
+
+.node-content.drag-bottom {
+    border-bottom: 2px solid var(--accent-color);
+}
+
+.toggle-btn {
+    width: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-right: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.toggle-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 2px;
+}
+
+.toggle-btn.expanded svg {
+    transform: rotate(90deg);
+}
+
+.node-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.9rem;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.node-title svg {
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.node-content.active .node-title svg {
+    opacity: 1;
+}
+
+/* ANIMAZIONE ESPANSIONE ALBERO */
+.children-block {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s ease-in-out;
+}
+
+.children-block.expanded {
+    grid-template-rows: 1fr;
+}
+
+.children-block-inner {
+    overflow: hidden;
+    padding-left: 10px;
+    border-left: 1px solid var(--border-color);
+    margin-left: 19px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.toc-node {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border-left: 1px solid transparent;
+    transition: all 0.1s;
+}
+
+.toc-node:hover {
+    background: var(--item-hover);
+    color: var(--accent-color);
+}
+
+.toc-h1 {
+    padding-left: 28px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.toc-h2 {
+    padding-left: 40px;
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+
+.toc-icon {
+    margin-right: 6px;
+    font-size: 0.7rem;
+    color: var(--accent-color);
+    opacity: 0.5;
+    font-family: monospace;
+}
+
+/* --- NOTIFICHE TOAST --- */
+.toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast-msg {
+    background: var(--sidebar-bg);
+    border-left: 4px solid var(--accent-color);
+    color: var(--text-primary);
+    padding: 12px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    font-size: 0.85rem;
+    font-weight: 500;
+    transform: translateX(120%);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.toast-msg.show {
+    transform: translateX(0);
+}
+
+/* --- STILI WIDGET BUTTON BAR --- */
+.adv-action-button-wrapper .btn.action-btn-run { transition: all 0.2s ease; }
+.adv-action-button-wrapper .btn.action-btn-run:hover {
+    filter: brightness(1.15); transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.15) !important;
+}
+.adv-action-button-wrapper .btn.action-btn-run:active {
+    transform: translateY(0); box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+.adv-btn-icon-trigger {
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px; padding: 2px; margin-left: -2px; transition: background 0.2s;
+}
+.adv-action-button-wrapper .btn:not(.action-btn-run) .adv-btn-icon-trigger:hover {
+    background: rgba(0,0,0,0.2); box-shadow: 0 0 0 2px rgba(0,0,0,0.2);
+}
+summary::-webkit-details-marker { display: none; }
+details > summary { list-style: none; }
+.btn-color-swatch:hover { filter: brightness(1.2); transform: scale(1.1); }
+
+/* --- STILI NODI ALBERO E RECORD --- */
+:root {
+    --record-color: #10b981; 
+    --record-bg: rgba(16, 185, 129, 0.1);
+    --view-color: #f59e0b;
+}
+[data-theme="dark"], [data-theme="notion-dark"] {
+    --record-color: #34d399; 
+    --record-bg: rgba(52, 211, 153, 0.15);
+    --view-color: #fbbf24;
+}
+
+.node-content.record-note-node { 
+    color: var(--record-color); 
+    border-left: 2px solid var(--record-color) !important; 
+    background: var(--record-bg) !important; 
+}
+.node-content.record-note-node .node-add-btn { display: none !important; }
+.node-content.db-view-node { color: var(--text-primary); }
+.node-content.db-view-node:hover { background: rgba(245, 158, 11, 0.1); }
+
+
+/* =========================================================================
+   TOUCH & TABLET OPTIMIZATIONS (Fat Finger & Hover Fallbacks)
+   Queste regole si attivano solo se il dispositivo ha un touch screen primario.
+   ========================================================================= */
+
+@media (pointer: coarse) {
+    /* 1. VISIBILITÀ ELEMENTI "HOVER-ONLY" */
+    /* Rende visibili in modo permanente ma discreto i pulsanti che su PC appaiono solo al passaggio del mouse */
+    .node-add-btn,
+    .widget-drag-handle,
+    .widget-options-btn,
+    .columns-opt-btn,
+    .table-trigger-common {
+        opacity: 0.6 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        transform: scale(1) !important; /* Disabilita riduzioni di scala per i trigger tabella */
+    }
+
+    /* 2. ESPANSIONE AREE DI TOCCO (RESIZER E DRAG) */
+    /* I resizer tabelle e colonne passano da 5px a 20px per essere presi col dito */
+    .adv-col-resizer,
+    .std-col-resizer,
+    .col-resizer {
+        width: 20px !important;
+        transform: translateX(10px) !important; /* Li sposta leggermente a destra per centrarli sulla riga */
+        background-color: transparent; /* Mantiene la trasparenza finché non viene toccato */
+    }
+    .adv-col-resizer:active,
+    .std-col-resizer:active,
+    .col-resizer:active {
+        background-color: var(--accent-color) !important;
+        opacity: 0.3 !important;
+    }
+
+    /* Allarga il pulsante per collassare i rami dell'albero */
+    .toggle-btn {
+        width: 30px !important; 
+        height: 30px !important;
+    }
+
+    /* 3. AUMENTO SPAZIATURA MENU CONTESTUALI E TENDINE */
+    /* Aumenta l'altezza delle singole voci per evitare click accidentali sulla voce sbagliata */
+    .adv-menu-item {
+        padding: 10px 14px !important; 
+        margin-bottom: 4px !important;
+    }
+    
+    .list-option-btn,
+    .adv-dropdown-item {
+        padding: 10px 12px !important;
+    }
+
+    /* I quadretti dei colori (Color Picker) devono essere più distanziati */
+    .color-option, .color-swatch {
+        width: 28px !important;
+        height: 28px !important;
+        margin: 2px !important;
+    }
+
+    /* 4. TOOLBAR MOBILE-FRIENDLY */
+    /* Aumenta il padding dei pulsanti della toolbar superiore */
+    .toolbar button, 
+    .toolbar .btn-color-main {
+        padding: 8px 10px !important;
+    }
+    
+    .btn-color-arrow {
+        width: 24px !important; /* Freccia per aprire il menu colori più facile da colpire */
+    }
+
+    /* 5. GESTIONE MIGLIORE DELLO SCROLL ORIZZONTALE SUI WIDGET */
+    /* Assicura uno scrolling inerziale nativo come se fosse un'app iOS/Android nativa */
+    .adv-scroll-container,
+    .toolbar {
+        -webkit-overflow-scrolling: touch;
+        /* Nasconde le scrollbar native tozze che alcuni tablet Android potrebbero mostrare */
+        scrollbar-width: none; 
+    }
+    .adv-scroll-container::-webkit-scrollbar,
+    .toolbar::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* =========================================================================
+   TABLET PORTRAIT LAYOUT FIX (Larghezze 768px - 900px)
+   ========================================================================= */
+/* Estendiamo il comportamento Mobile (Sidebar che sparisce e fa da drawer) 
+   anche agli iPad/Tablet tenuti in verticale, liberando spazio per l'editor */
+@media (max-width: 900px) {
+    aside {
+        position: absolute;
+        top: 50px;
+        left: 0;
+        bottom: 0;
+        height: calc(100dvh - 50px);
+        z-index: 300;
+        box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+        transform: translateX(0);
+        transition: transform 0.3s ease;
+    }
+
+    aside.collapsed {
+        margin-left: 0;
+        transform: translateX(-100%);
+    }
+
+    .brand span#fileNameDisplay {
+        max-width: 200px;
+    }
+    
+    .status-pill {
+        display: none; /* Nasconde il badge salvataggio per salvare spazio prezioso */
+    }
+}
+
+
+@media (max-width: 768px) {
+    aside {
+        position: absolute;
+        top: 50px;
+        left: 0;
+        bottom: 0;
+        height: calc(100dvh - 50px);
+        z-index: 300;
+        box-shadow: 4px 0 15px rgba(0, 0, 0, 0.1);
+        transform: translateX(0);
+        transition: transform 0.3s ease;
+    }
+
+    aside.collapsed {
+        margin-left: 0;
+        transform: translateX(-100%);
+    }
+
+    .brand span#fileNameDisplay {
+        max-width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    header {
+        padding: 0 10px;
+    }
+
+    .status-pill {
+        display: none;
+    }
+
+    .node-add-btn {
+        opacity: 0.8;
+        visibility: visible;
+    }
+}

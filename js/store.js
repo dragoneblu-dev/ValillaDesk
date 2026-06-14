@@ -1,0 +1,961 @@
+/**
+ * Store.js
+ * Gestione I/O: Architettura a Workspace Frammentato (Local-First Cloud Sync Ready).
+ * FIX SYNC HASHING: Introdotta la normalizzazione degli "a capo" (\r\n -> \n) e la 
+ * serializzazione JSON pulita per eliminare i falsi positivi di conflitto generati dal File System.
+ * REFACTOR LOGGING: Ripristinata integralmente la logica di concorrenza LWW (Last-Write-Wins) originale,
+ * con l'aggiunta di log di debug specifici nel caso in cui un conflitto reale venga intercettato.
+ */
+
+const DB_NAME = 'ProNotesDB';
+const STORE_NAME = 'backupStore';
+
+const CryptoUtils = {
+    async deriveKey(password, salt) {
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey(
+            "raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]
+        );
+        return crypto.subtle.deriveKey(
+            { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+            keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+        );
+    },
+
+    bufferToBase64(buf) {
+        const bytes = new Uint8Array(buf);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    },
+
+    base64ToBuffer(base64) {
+        const binary = window.atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+    },
+
+    async encrypt(text, password) {
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await this.deriveKey(password, salt);
+        const enc = new TextEncoder();
+        const cipherBuffer = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, enc.encode(text));
+        
+        const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+        const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+        const cipherBase64 = this.bufferToBase64(cipherBuffer);
+        return `PRONOTES_ENC_V1|${saltHex}|${ivHex}|${cipherBase64}`;
+    },
+
+    async decrypt(encryptedString, password) {
+        const parts = encryptedString.split('|');
+        if (parts.length !== 4) throw new Error("Formato corrotto.");
+        const salt = new Uint8Array(parts[1].match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        const iv = new Uint8Array(parts[2].match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        const cipherBytes = this.base64ToBuffer(parts[3]);
+        const key = await this.deriveKey(password, salt);
+        const decryptedBuffer = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, cipherBytes);
+        return new TextDecoder().decode(decryptedBuffer);
+    }
+};
+
+const Store = {
+    isDirty: false,
+    debounceTimer: null,
+    dbPromise: null,
+    _isSavingFile: false,
+    _saveQueuePending: false,
+    
+    _diskHashes: { notes: {}, databases: {}, index: "" },
+
+    _simpleHash: (str) => {
+        if (!str || typeof str !== 'string') return 0;
+        // Normalizzazione carriage return per coerenza tra File System Windows e RAM Browser
+        str = str.replace(/\r\n/g, '\n');
+        
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString(36);
+    },
+
+    // FUNZIONE CANONICA: Crea l'Hash convertendo l'oggetto in stringa senza spazi (minificata).
+    // Questo ci rende immuni da falsi conflitti dovuti a formattazione \r\n di Windows vs \n di Mac.
+    _hashObj: (obj, cryptoPrefix = "") => {
+        return Store._simpleHash(cryptoPrefix + JSON.stringify(obj));
+    },
+
+    initDB: () => {
+        if (!window.showDirectoryPicker) {
+            alert("Il tuo browser non supporta il File System Nativo (Usa Chrome, Edge o Opera su PC).");
+        }
+        if (!Store.dbPromise) {
+            Store.dbPromise = new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+        return Store.dbPromise;
+    },
+
+    generateId: () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+        return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
+    },
+
+    getNote: (id) => AppState.notes.find(n => n.id === id),
+
+    getChildren: (parentId, includeDeleted = false) => AppState.notes.filter(n => n.parentId === parentId && (includeDeleted || !n.deletedAt)),
+
+    getAllDescendants: (parentId, includeDeleted = false) => {
+        let descendants = [];
+        const children = Store.getChildren(parentId, includeDeleted);
+        children.forEach(child => {
+            descendants.push(child);
+            const grandChildren = Store.getAllDescendants(child.id, includeDeleted);
+            descendants = descendants.concat(grandChildren);
+        });
+        return descendants;
+    },
+
+    prepareForSave: () => {
+        if (typeof Editor !== 'undefined' && Editor.cleanOrphanedCaches) {
+            Editor.cleanOrphanedCaches();
+        }
+        return {
+            notes: AppState.notes.map(note => {
+                const cleanNote = { ...note };
+                Object.keys(cleanNote).forEach(key => { if (key.startsWith('_')) delete cleanNote[key]; });
+                return cleanNote;
+            }),
+            databases: AppState.databases || {},
+            homeCitations: AppState.homeCitations || [],
+            templates: AppState.templates || [] 
+        };
+    },
+
+    _base64ToBlob: (b64Data, contentType) => {
+        const byteCharacters = window.atob(b64Data);
+        const byteArrays = [];
+        for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+            const slice = byteCharacters.slice(offset, offset + 512);
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) { 
+                byteNumbers[i] = slice.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            byteArrays.push(byteArray);
+        }
+        return new Blob(byteArrays, {type: contentType});
+    },
+
+    saveAsset: async (file, typePrefix) => {
+        if (!AppState.assetsHandle) {
+            alert("Devi creare o aprire un Workspace (Cartella) prima di inserire allegati.");
+        return null;
+        }
+        try {
+            const ext = file.name.split('.').pop();
+            const fileName = `${typePrefix}_${Store.generateId()}.${ext}`;
+            const fileHandle = await AppState.assetsHandle.getFileHandle(fileName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(file);
+            await writable.close();
+            
+            const url = URL.createObjectURL(file);
+            if (typePrefix === 'img') Editor.imageCache[fileName] = url;
+            if (typePrefix === 'aud') Editor.audioCache[fileName] = url;
+            
+            return fileName;
+        } catch (e) {
+            console.error("Errore salvataggio asset:", e);
+            alert("Errore nel salvare il file nella cartella assets.");
+            return null;
+        }
+    },
+
+    _loadAssetsIntoRAM: async () => {
+        if (!AppState.assetsHandle) return;
+        Editor.imageCache = {}; 
+        Editor.audioCache = {};
+        try {
+            for await (const entry of AppState.assetsHandle.values()) {
+                if (entry.kind === 'file') {
+                    const fileHandle = await AppState.assetsHandle.getFileHandle(entry.name);
+                    const file = await fileHandle.getFile();
+                    const url = URL.createObjectURL(file);
+                    
+                    if (entry.name.startsWith('img_')) Editor.imageCache[entry.name] = url;
+                    if (entry.name.startsWith('aud_')) Editor.audioCache[entry.name] = url;
+                }
+            }
+        } catch(e) {
+            console.warn("Impossibile leggere la cartella assets", e);
+        }
+    },
+
+    executePhysicalGarbageCollection: async () => {
+        if (!AppState.workspaceHandle) return;
+
+        if (AppState.assetsHandle) {
+            const activeImageIds = new Set();
+            const activeAudioIds = new Set(); 
+
+            const extractIds = (htmlString) => {
+                if (!htmlString) return;
+                const imgRegex = /data-image-ref=["']([^"']+)["']/g;
+                let match;
+                while ((match = imgRegex.exec(htmlString)) !== null) activeImageIds.add(match[1]);
+
+                const audRegex = /data-audio-ref=["']([^"']+)["']/g;
+                while ((match = audRegex.exec(htmlString)) !== null) activeAudioIds.add(match[1]);
+            };
+
+            AppState.notes.forEach(note => { if (!note.deletedAt) extractIds(note.content); });
+
+            if (AppState.databases) {
+                Object.values(AppState.databases).forEach(state => {
+                    if (state.rows) {
+                        state.rows.forEach(row => {
+                            if (row.cells) {
+                                Object.values(row.cells).forEach(cellVal => {
+                                    if (typeof cellVal === 'string' && (cellVal.includes('data-image-ref') || cellVal.includes('data-audio-ref'))) {
+                                    extractIds(cellVal); 
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+
+            try {
+                for await (const entry of AppState.assetsHandle.values()) {
+                    if (entry.kind === 'file') {
+                        if (entry.name.startsWith('img_') && !activeImageIds.has(entry.name)) {
+                            await AppState.assetsHandle.removeEntry(entry.name);
+                            if (Editor.imageCache[entry.name]) { URL.revokeObjectURL(Editor.imageCache[entry.name]); delete Editor.imageCache[entry.name]; }
+                        } else if (entry.name.startsWith('aud_') && !activeAudioIds.has(entry.name)) {
+                            await AppState.assetsHandle.removeEntry(entry.name);
+                            if (Editor.audioCache[entry.name]) { URL.revokeObjectURL(Editor.audioCache[entry.name]); delete Editor.audioCache[entry.name]; }
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
+        try {
+            const notesDir = await AppState.workspaceHandle.getDirectoryHandle('notes', { create: false });
+            const validNoteIds = new Set(AppState.notes.map(n => n.id));
+            
+            for await (const entry of notesDir.values()) {
+                if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                    const noteId = entry.name.replace('.json', '');
+                    if (!validNoteIds.has(noteId)) {
+                        await notesDir.removeEntry(entry.name);
+                        delete Store._diskHashes.notes[noteId];
+                    }
+                }
+            }
+
+            const dbDir = await AppState.workspaceHandle.getDirectoryHandle('databases', { create: false });
+            const validDbIds = new Set(Object.keys(AppState.databases || {}));
+
+            for await (const entry of dbDir.values()) {
+                if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                    const dbId = entry.name.replace('.json', '');
+                    if (!validDbIds.has(dbId)) {
+                        await dbDir.removeEntry(entry.name);
+                        delete Store._diskHashes.databases[dbId];
+                    }
+                }
+            }
+        } catch(e) {}
+    },
+
+    _readFragmentFromDisk: async (dirHandle, fileName) => {
+        try {
+            const fileHandle = await dirHandle.getFileHandle(fileName);
+            const file = await fileHandle.getFile();
+            let text = await file.text();
+            
+            if (text.startsWith('PRONOTES_ENC_V1|') && AppState.documentPassword) {
+                try {
+                    text = await CryptoUtils.decrypt(text, AppState.documentPassword);
+                } catch(e) { 
+                    console.error(`🔴 [SYNC LOG] Errore di decrittografia per il file ${fileName}.`);
+                    return { status: 'error', error: e }; 
+                }
+            }
+            return { status: 'success', data: text };
+        } catch(e) {
+            if (e.name === 'NotFoundError') return { status: 'not_found' };
+            console.error(`🔴 [SYNC LOG] Impossibile leggere il file ${fileName} (I/O Error):`, e);
+            return { status: 'error', error: e }; 
+        }
+    },
+
+    saveToFile: async () => {
+        if (Store._isSavingFile) { Store._saveQueuePending = true; return; }
+        if (!AppState.workspaceHandle) { Store.saveLocalBackup(); if (typeof UI !== 'undefined') UI.showStatus("unsaved"); return; }
+
+        Store._isSavingFile = true;
+        try {
+            UI.showStatus("saving");
+
+            if (AppState.currentNoteId && AppState.isEditMode && !AppState.isSwitchingNote) {
+                const currentNote = Store.getNote(AppState.currentNoteId);
+                if (currentNote && typeof Editor !== 'undefined') currentNote.content = Editor.getCleanHTML();
+            }
+
+            Store.isDirty = false; 
+            Store.saveLocalBackup(); 
+
+            const notesDir = await AppState.workspaceHandle.getDirectoryHandle('notes', { create: true });
+            const dbDir = await AppState.workspaceHandle.getDirectoryHandle('databases', { create: true });
+
+            const cryptoPrefix = AppState.documentPassword ? "ENC_" : "RAW_";
+
+            // =========================================================================
+            // 1. SALVATAGGIO INDEX (MULTI-UTENTE ABILITATO LWW)
+            // =========================================================================
+            const indexPayload = { templates: AppState.templates || [], homeCitations: AppState.homeCitations || [], noteOrder: AppState.notes.map(n => n.id) };
+            const indexStr = JSON.stringify(indexPayload, null, 2);
+            const indexHash = Store._hashObj(indexPayload, cryptoPrefix);
+
+            if (Store._diskHashes.index !== indexHash) {
+                const diskResult = await Store._readFragmentFromDisk(AppState.workspaceHandle, 'index.json');
+                
+                if (diskResult.status === 'success') {
+                    try {
+                        const diskData = JSON.parse(diskResult.data);
+                        const diskHash = Store._hashObj(diskData, cryptoPrefix);
+                        
+                        if (Store._diskHashes.index && diskHash !== Store._diskHashes.index) {
+                            console.warn(`🚨 [SYNC LOG] Conflitto reale su index.json.`);
+                            console.log(`Hash in RAM: ${Store._diskHashes.index}`);
+                            console.log(`Hash su Disco: ${diskHash}`);
+
+                            // LWW REALE: Integra i dati del disco con le modifiche locali
+                            AppState.templates = diskData.templates || AppState.templates;
+                            AppState.homeCitations = diskData.homeCitations || AppState.homeCitations;
+                            
+                            const newIndexPayload = { templates: AppState.templates, homeCitations: AppState.homeCitations, noteOrder: AppState.notes.map(n => n.id) };
+                            let dataToWrite = JSON.stringify(newIndexPayload, null, 2);
+                            if (AppState.documentPassword) dataToWrite = await CryptoUtils.encrypt(dataToWrite, AppState.documentPassword);
+                            
+                            const fileHandle = await AppState.workspaceHandle.getFileHandle('index.json', { create: true });
+                            const writable = await fileHandle.createWritable();
+                            await writable.write(dataToWrite);
+                            await writable.close();
+                            Store._diskHashes.index = Store._hashObj(newIndexPayload, cryptoPrefix);
+
+                        } else {
+                            let dataToWrite = AppState.documentPassword ? await CryptoUtils.encrypt(indexStr, AppState.documentPassword) : indexStr;
+                            const fileHandle = await AppState.workspaceHandle.getFileHandle('index.json', { create: true });
+                            const writable = await fileHandle.createWritable();
+                            await writable.write(dataToWrite);
+                            await writable.close();
+                            Store._diskHashes.index = indexHash;
+                        }
+                    } catch(e) { console.error("🔴 [SYNC LOG] Errore parsing index.json remoto:", e); }
+                } else if (diskResult.status === 'not_found') {
+                    let dataToWrite = AppState.documentPassword ? await CryptoUtils.encrypt(indexStr, AppState.documentPassword) : indexStr;
+                    const fileHandle = await AppState.workspaceHandle.getFileHandle('index.json', { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(dataToWrite);
+                    await writable.close();
+                    Store._diskHashes.index = indexHash;
+                } else {
+                    console.warn(`🟠 [SYNC LOG] File index.json bloccato o inaccessibile. Salto la scrittura per prevenire corruzioni.`);
+                }
+            }
+
+            // =========================================================================
+            // 2. SALVATAGGIO DATABASES E STRUTTURE COMPLESSE (LWW - MULTI-UTENTE ABILITATO)
+            // =========================================================================
+            let syncedDatabasesCount = 0;
+
+            for (const [dbId, ramState] of Object.entries(AppState.databases || {})) {
+                let dbStr = JSON.stringify(ramState, null, 2);
+                let currentRamHash = Store._hashObj(ramState, cryptoPrefix);
+
+                if (Store._diskHashes.databases[dbId] !== currentRamHash) {
+                    
+                    const diskResult = await Store._readFragmentFromDisk(dbDir, `${dbId}.json`);
+                    let skipWrite = false;
+
+                    if (diskResult.status === 'error') {
+                        console.warn(`🟠 [SYNC LOG] File DB ${dbId}.json bloccato (I/O Error). Salto la scrittura per prevenire corruzioni.`);
+                        skipWrite = true;
+                    } 
+                    else if (diskResult.status === 'success') {
+                        try {
+                            const diskState = JSON.parse(diskResult.data);
+                            const currentDiskHash = Store._hashObj(diskState, cryptoPrefix);
+                            
+                            if (Store._diskHashes.databases[dbId] && currentDiskHash !== Store._diskHashes.databases[dbId]) {
+                                console.error(`🚨 [SYNC LOG] CONFLITTO LWW REALE SUL COMPONENTE: ${dbId}`);
+                                console.log(`Hash in RAM: ${Store._diskHashes.databases[dbId]}`);
+                                console.log(`Hash su Disco: ${currentDiskHash}`);
+                                
+                                // 1. LA TRAPPOLA DEL BLUR: Svuota il focus per forzare i salvataggi locali pendenti PRIMA del reset
+                                if (document.activeElement && document.activeElement !== document.body) {
+                                    document.activeElement.blur();
+                                }
+                                // Lascia 50ms al Browser per far sfogare i trigger Javascript scaturiti dal blur
+                                await new Promise(resolve => setTimeout(resolve, 50));
+
+                                // 2. STRICT LWW ORIGINALE: Sostituzione in RAM (Il Disco Vince)
+                                AppState.databases[dbId] = diskState;
+                                Store._diskHashes.databases[dbId] = currentDiskHash;
+                                skipWrite = true; 
+                                
+                                // 3. ROUTER DI RENDERING (Aggiornamento Interfaccia Visiva in Diretta)
+                                if (dbId.includes('adv_btnbar_')) {
+                                    if (typeof ButtonManager !== 'undefined') ButtonManager.render(dbId);
+                                } else if (dbId.includes('adv_journal_')) {
+                                    if (typeof JournalManager !== 'undefined') JournalManager.render(dbId);
+                                } else if (dbId.includes('adv_cols_') || dbId.includes('adv_code_')) {
+                                    // I Moduli statici non hanno bisogno di re-render completo qui
+                                } else {
+                                    if (typeof AdvancedTable !== 'undefined') AdvancedTable.renderTable(dbId);
+                                }
+                                
+                                syncedDatabasesCount++;
+                            }
+                        } catch(e) { 
+                            console.error("🔴 [SYNC LOG] Fallimento nel parsing del DB remoto:", e); 
+                        }
+                    }
+
+                    if (!skipWrite) {
+                        let dataToWrite = AppState.documentPassword ? await CryptoUtils.encrypt(dbStr, AppState.documentPassword) : dbStr;
+                        const fileHandle = await dbDir.getFileHandle(`${dbId}.json`, { create: true });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(dataToWrite);
+                        await writable.close();
+                        Store._diskHashes.databases[dbId] = currentRamHash;
+                    }
+                }
+            }
+
+            if (syncedDatabasesCount > 0 && typeof UI !== 'undefined' && UI.showToast) {
+                UI.showToast(`Sincronizzazione: ${syncedDatabasesCount} Componenti aggiornati dal Cloud.`, "info");
+            }
+
+            // =========================================================================
+            // 3. SALVATAGGIO NOTE E TESTI PURI (LWW - MULTI-UTENTE ABILITATO)
+            // =========================================================================
+            const ramNotes = AppState.notes.map(note => {
+                const cleanNote = { ...note };
+                Object.keys(cleanNote).forEach(key => { if (key.startsWith('_')) delete cleanNote[key]; });
+                return cleanNote;
+            });
+
+            let currentNoteWasCorrupted = false;
+            let syncedNotesCount = 0;
+
+            for (const note of ramNotes) {
+                let noteStr = JSON.stringify(note, null, 2);
+                let currentRamHash = Store._hashObj(note, cryptoPrefix);
+                
+                if (Store._diskHashes.notes[note.id] !== currentRamHash) {
+                    const diskResult = await Store._readFragmentFromDisk(notesDir, `${note.id}.json`);
+                    let skipWrite = false;
+
+                    if (diskResult.status === 'error') {
+                        console.warn(`🟠 [SYNC LOG] File Nota ${note.id}.json bloccato (I/O Error). Salto la scrittura per prevenire corruzioni.`);
+                        skipWrite = true;
+                    }
+                    else if (diskResult.status === 'success') {
+                        try {
+                            const diskNote = JSON.parse(diskResult.data);
+                            const currentDiskHash = Store._hashObj(diskNote, cryptoPrefix);
+                            
+                            if (Store._diskHashes.notes[note.id] && currentDiskHash !== Store._diskHashes.notes[note.id]) {
+                                console.error(`🚨 [SYNC LOG] CONFLITTO LWW REALE SULLA NOTA: ${note.id}`);
+                                console.log(`Hash in RAM: ${Store._diskHashes.notes[note.id]}`);
+                                console.log(`Hash su Disco: ${currentDiskHash}`);
+                                
+                                // LA TRAPPOLA DEL BLUR
+                                if (document.activeElement && document.activeElement !== document.body) {
+                                    document.activeElement.blur();
+                                }
+                                await new Promise(resolve => setTimeout(resolve, 50));
+
+                                // STRICT LWW ORIGINALE: Sostituzione della nota in RAM
+                                const liveNoteIndex = AppState.notes.findIndex(n => n.id === note.id);
+                                if (liveNoteIndex > -1) {
+                                    AppState.notes[liveNoteIndex] = diskNote;
+                                }
+
+                                Store._diskHashes.notes[note.id] = currentDiskHash;
+                                skipWrite = true; // ABORT WRITE
+                                syncedNotesCount++;
+                                
+                                // AGGIORNAMENTO UI SE LA NOTA E' APERTA
+                                if (AppState.currentNoteId === note.id) {
+                                    console.log(`🔵 [SYNC LOG] Esecuzione aggiornamento visivo in Sola Lettura per la nota ${note.id}`);
+                                    const editorEl = document.getElementById('noteContent');
+                                    if (editorEl) {
+                                        AppState.isSwitchingNote = true; 
+                                        
+                                        UI.toggleEditMode(false); 
+                                        editorEl.innerHTML = diskNote.content;
+                                        
+                                        if (typeof Editor !== 'undefined' && Editor.hydrateMedia) Editor.hydrateMedia(editorEl);
+                                        if (typeof WidgetManager !== 'undefined') WidgetManager.mountAll(editorEl);
+                                        if (typeof CitationManager !== 'undefined') CitationManager.renderLiveCitations();
+                                        
+                                        setTimeout(() => { AppState.isSwitchingNote = false; }, 200);
+                                        currentNoteWasCorrupted = true;
+                                    }
+                                }
+                            }
+                        } catch(e) { 
+                            console.error("🔴 [SYNC LOG] Fallimento nel parsing della Nota remota:", e); 
+                        }
+                    }
+
+                    if (!skipWrite) {
+                        let dataToWrite = AppState.documentPassword ? await CryptoUtils.encrypt(noteStr, AppState.documentPassword) : noteStr;
+                        const fileHandle = await notesDir.getFileHandle(`${note.id}.json`, { create: true });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(dataToWrite);
+                        await writable.close();
+                        Store._diskHashes.notes[note.id] = currentRamHash;
+                    }
+                }
+            }
+
+            if (currentNoteWasCorrupted && typeof UI !== 'undefined' && UI.showToast) {
+                UI.showToast("⚠️ La nota attiva è stata aggiornata dal Cloud (Sola Lettura per sicurezza).", "warning");
+            } else if (syncedNotesCount > 0 && typeof UI !== 'undefined' && UI.showToast) {
+                UI.showToast(`Sincronizzazione: ${syncedNotesCount} Note aggiornate dal Cloud.`, "info");
+            }
+
+            await Store.executePhysicalGarbageCollection();
+            UI.showStatus("saved");
+
+        } catch (err) {
+            Store.isDirty = true; 
+            Store.saveLocalBackup();
+            UI.showStatus("error");
+            console.error("I/O Write Error:", err);
+        } finally {
+            Store._isSavingFile = false;
+            if (Store._saveQueuePending) { Store._saveQueuePending = false; Store.saveToFile(); }
+        }
+    },
+
+    triggerAutoSave: (forceImmediate = false, isManualAction = false) => {
+        Store.isDirty = true;
+        Store.saveLocalBackup();
+
+        if (!AppState.workspaceHandle) {
+            if (typeof UI !== 'undefined') UI.showStatus("unsaved");
+            if (isManualAction) Store.createWorkspace().catch(e => console.warn(e));
+            return;
+        }
+
+        if (forceImmediate) {
+            clearTimeout(Store.debounceTimer);
+            Store.saveToFile();
+            return;
+        }
+
+        UI.showStatus("pending");
+        clearTimeout(Store.debounceTimer);
+        Store.debounceTimer = setTimeout(() => {
+            if (Store.isDirty && AppState.workspaceHandle) Store.saveToFile();
+        }, 1500);
+    },
+
+    _finalizeUIAfterLoad: () => {
+        AppState.searchFilter = "";
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.value = "";
+        
+        AppState.showFavoritesInTree = false;
+        AppState.showBookmarksInTree = false;
+        AppState.showDbNotesInTree = false;
+
+        if (typeof UI !== 'undefined' && UI._updateTabsUI) UI._updateTabsUI('notes');
+        UI.updateFileName(AppState.fileName);
+        UI.renderTree();
+        UI.closeEditor();
+
+        const sb = document.getElementById('sidebar');
+        const btn = document.getElementById('sidebarToggleBtn');
+        if (sb) { sb.classList.remove('collapsed'); if (btn) btn.classList.add('active'); }
+
+        Store.isDirty = false;
+        UI.showStatus("saved");
+
+        setTimeout(() => { if (typeof UI !== 'undefined' && AppState.showMinimap) UI.Minimap.sync(); }, 300);
+    },
+
+    openWorkspace: async () => {
+        try {
+            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            AppState.workspaceHandle = dirHandle;
+            AppState.fileName = dirHandle.name;
+
+            UI.showStatus("saving"); 
+
+            // Mount Cartelle
+            try { AppState.assetsHandle = await dirHandle.getDirectoryHandle('assets', { create: true }); } catch (e) {}
+            await Store._loadAssetsIntoRAM();
+
+            // Svuota i vecchi Hash per evitare interferenze
+            Store._diskHashes = { notes: {}, databases: {}, index: "" };
+
+            // Rilevamento Architettura
+            let isLegacyMonolith = false;
+            try {
+                const dataFileHandle = await dirHandle.getFileHandle('data.json');
+                const file = await dataFileHandle.getFile();
+                const text = await file.text();
+                
+                isLegacyMonolith = true;
+                const success = await Store._decryptAndProcess(text);
+                if (!success) return;
+
+            } catch (e) {
+                isLegacyMonolith = false;
+            }
+
+            if (!isLegacyMonolith) {
+                try {
+                    const indexHandle = await dirHandle.getFileHandle('index.json');
+                    const idxFile = await indexHandle.getFile();
+                    const success = await Store._decryptAndProcessFragment(await idxFile.text(), 'index');
+                    if (!success) return; 
+
+                    const notesDir = await dirHandle.getDirectoryHandle('notes');
+                    AppState.notes = []; 
+                    for await (const entry of notesDir.values()) {
+                        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                            const nHandle = await notesDir.getFileHandle(entry.name);
+                            const nFile = await nHandle.getFile();
+                            await Store._decryptAndProcessFragment(await nFile.text(), 'note');
+                        }
+                    }
+
+                    const dbDir = await dirHandle.getDirectoryHandle('databases');
+                    AppState.databases = {}; 
+                    for await (const entry of dbDir.values()) {
+                        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+                            const dbId = entry.name.replace('.json', '');
+                            const dHandle = await dbDir.getFileHandle(entry.name);
+                            const dFile = await dHandle.getFile();
+                            let dText = await dFile.text();
+                            
+                            if (!dText.startsWith('PRONOTES_ENC')) {
+                               let obj = JSON.parse(dText);
+                               obj._id_hack = dbId;
+                               dText = JSON.stringify(obj);
+                            } else {
+                               if (!AppState.documentPassword) {
+                                   AppState.documentPassword = await UI.PasswordManager.promptForOpen("Sblocca il Workspace");
+                                   if (!AppState.documentPassword) return;
+                               }
+                               let decTxt = await CryptoUtils.decrypt(dText, AppState.documentPassword);
+                               let obj = JSON.parse(decTxt);
+                               obj._id_hack = dbId;
+                               dText = JSON.stringify(obj);
+                            }
+
+                            await Store._decryptAndProcessFragment(dText, 'database');
+                        }
+                    }
+
+                    if (AppState._noteOrderCache && AppState._noteOrderCache.length > 0) {
+                        AppState.notes.sort((a, b) => {
+                            let idxA = AppState._noteOrderCache.indexOf(a.id);
+                            let idxB = AppState._noteOrderCache.indexOf(b.id);
+                            if (idxA === -1) idxA = 999999;
+                            if (idxB === -1) idxB = 999999;
+                            return idxA - idxB;
+                        });
+                        delete AppState._noteOrderCache; 
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    if (e.message === "DECRYPT_FAIL") {
+                        alert("Password errata. Impossibile leggere i file protetti.");
+                        AppState.documentPassword = null;
+                    } else {
+                        alert("Cartella non riconosciuta o Workspace corrotto.");
+                    }
+                    UI.showStatus("error");
+                    return;
+                }
+            }
+
+            if (typeof AdvancedTable !== 'undefined') AdvancedTable.ensureSystemPropertiesDB();
+            Store._finalizeUIAfterLoad();
+
+            if (isLegacyMonolith) {
+                console.log("[MIGRAZIONE] Rilevato vecchio data.json. Eseguo migrazione al file system frammentato...");
+                Store.isDirty = true;
+                await Store.saveToFile();
+                try {
+                    const oldHandle = await dirHandle.getFileHandle('data.json');
+                    const file = await oldHandle.getFile();
+                    const backupHandle = await dirHandle.getFileHandle('data_legacy_backup.json', {create: true});
+                    const writable = await backupHandle.createWritable();
+                    await writable.write(await file.text());
+                    await writable.close();
+                    await dirHandle.removeEntry('data.json');
+                    console.log("[MIGRAZIONE] data.json frammentato con successo.");
+                } catch(err) {}
+            }
+
+        } catch (err) {
+            if (err.name !== 'AbortError') alert("Errore apertura Workspace: " + err.message);
+        }
+    },
+
+    createWorkspace: async () => {
+        if (Store.isDirty || AppState.notes.length > 0) {
+            if (!confirm("Attenzione: Stai per creare un nuovo Workspace. I dati dell'ambiente attuale (non salvati) verranno chiusi e azzerati. Procedere?")) return;
+        }
+
+        try {
+            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            
+            let isEmpty = true;
+            try { for await (const entry of dirHandle.values()) { isEmpty = false; break; } } catch(e) {}
+
+            if (!isEmpty) {
+                if(!confirm("Attenzione: La cartella selezionata NON è vuota. L'app creerà le proprie cartelle al suo interno. Vuoi procedere lo stesso?")) return;
+            }
+
+            if (typeof Editor !== 'undefined') Editor.clearHistory();
+            AppState.notes = []; AppState.databases = {}; AppState.homeCitations = []; AppState.templates = []; AppState.currentNoteId = null; AppState.searchFilter = "";
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.value = "";
+            if (typeof AdvancedTable !== 'undefined') AdvancedTable.ensureSystemPropertiesDB();
+
+            AppState.workspaceHandle = dirHandle;
+            AppState.fileName = dirHandle.name;
+            AppState.documentPassword = null; 
+            
+            try { AppState.assetsHandle = await dirHandle.getDirectoryHandle('assets', { create: true }); } catch(e) {}
+
+            Store._diskHashes = { notes: {}, databases: {}, index: "" };
+            
+            Store.isDirty = true;
+            await Store.saveToFile();
+
+            Store.saveLocalBackup();
+            Store._finalizeUIAfterLoad();
+
+        } catch (err) {
+            if (err.name !== 'AbortError') alert("Errore creazione Workspace: " + err.message);
+        }
+    },
+
+    _decryptAndProcess: async (text) => {
+        try {
+            if (text.startsWith('PRONOTES_ENC_V1|')) {
+                const password = await UI.PasswordManager.promptForOpen();
+                if (!password) return false; 
+                try {
+                    const decryptedJson = await CryptoUtils.decrypt(text, password);
+                    AppState.documentPassword = password; 
+                    Store._processLoadedMonolith(JSON.parse(decryptedJson));
+                    return true;
+                } catch (err) { alert("Password errata o file corrotto."); return false; }
+            } else {
+                AppState.documentPassword = null;
+                Store._processLoadedMonolith(JSON.parse(text));
+                return true;
+            }
+        } catch (e) { alert("Impossibile leggere il file. Formato non valido."); return false; }
+    },
+
+    _decryptAndProcessFragment: async (text, type) => {
+        let jsonStr = text;
+        
+        if (text.startsWith('PRONOTES_ENC_V1|')) {
+            if (!AppState.documentPassword) {
+                const password = await UI.PasswordManager.promptForOpen("Sblocca il Workspace");
+                if (!password) return false;
+                AppState.documentPassword = password;
+            }
+            try { 
+                jsonStr = await CryptoUtils.decrypt(text, AppState.documentPassword); 
+            } catch (e) { 
+                throw new Error("DECRYPT_FAIL"); 
+            }
+        }
+
+        const data = JSON.parse(jsonStr);
+        const cryptoPrefix = AppState.documentPassword ? "ENC_" : "RAW_";
+
+        if (type === 'index') {
+            AppState.templates = data.templates || [];
+            AppState.homeCitations = data.homeCitations || [];
+            AppState._noteOrderCache = data.noteOrder || []; 
+            Store._diskHashes.index = Store._hashObj(data, cryptoPrefix);
+        } else if (type === 'note') {
+            AppState.notes.push(data);
+            Store._diskHashes.notes[data.id] = Store._hashObj(data, cryptoPrefix);
+        } else if (type === 'database') {
+            const dbId = data._id_hack; 
+            delete data._id_hack; // Rimuove l'attributo fantasma PRIMA del parsing per riallineare l'Hash
+            
+            AppState.databases[dbId] = data;
+            
+            // HASH CANONICO
+            const realHash = Store._hashObj(data, cryptoPrefix);
+            Store._diskHashes.databases[dbId] = realHash;
+        }
+        return true;
+    },
+
+    _processLoadedMonolith: (parsedData) => {
+        AppState.databases = parsedData.databases || {};
+        AppState.homeCitations = parsedData.homeCitations || [];
+        AppState.templates = parsedData.templates || []; 
+
+        let rawNotes = Array.isArray(parsedData) ? parsedData : (parsedData.notes || []);
+        const parser = new DOMParser();
+
+        AppState.notes = rawNotes.map(note => {
+            if (Array.isArray(note.content)) note.content = note.content.join('');
+            
+            if (note.content) {
+                let contentHTML = note.content;
+                const imgRegex = /data-image-ref=["']([^"']+)["']/g;
+                let match;
+                while ((match = imgRegex.exec(contentHTML)) !== null) {
+                    const filename = match[1];
+                    if (Editor.imageCache[filename]) {
+                        contentHTML = contentHTML.replace(new RegExp(`src=["'][^"']*["']\\s*data-image-ref=["']${filename}["']`, 'g'), `src="${Editor.imageCache[filename]}" data-image-ref="${filename}"`);
+                    }
+                }
+                const audRegex = /data-audio-ref=["']([^"']+)["']/g;
+                while ((match = audRegex.exec(contentHTML)) !== null) {
+                    const filename = match[1];
+                    if (Editor.audioCache[filename]) {
+                        contentHTML = contentHTML.replace(new RegExp(`src=["'][^"']*["']\\s*data-audio-ref=["']${filename}["']`, 'g'), `src="${Editor.audioCache[filename]}" data-audio-ref="${filename}"`);
+                    }
+                }
+                note.content = contentHTML;
+            }
+
+            if (note.content && note.content.includes('data-state')) {
+                let changed = false;
+                const doc = parser.parseFromString(note.content, 'text/html');
+                doc.querySelectorAll('.adv-widget-shell, .adv-table-wrapper, .adv-journal-wrapper').forEach(el => {
+                    if (el.hasAttribute('data-state')) {
+                        try { AppState.databases[el.id] = JSON.parse(el.getAttribute('data-state').replace(/&quot;/g, '"')); el.removeAttribute('data-state'); changed = true; } catch(e) {}
+                    }
+                });
+                if (changed) note.content = doc.body.innerHTML;
+            }
+            return note;
+        });
+    },
+
+    saveAs: async () => {
+        try {
+            Store.isDirty = true;
+            if (window.showSaveFilePicker) {
+                const handle = await window.showSaveFilePicker({ types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }] });
+                let dataToWrite = JSON.stringify(Store.prepareForSave(), null, 2);
+                if (AppState.documentPassword) dataToWrite = await CryptoUtils.encrypt(dataToWrite, AppState.documentPassword);
+                const writable = await handle.createWritable();
+                await writable.write(dataToWrite);
+                await writable.close();
+                UI.showToast("Backup JSON Monolitico salvato.", "success");
+            } else Store.downloadSnapshot();
+        } catch (err) {}
+    },
+
+    saveLocalBackup: async () => {
+        try {
+            const db = await Store.initDB();
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            
+            const payloadObj = Store.prepareForSave();
+            let dataToStore = payloadObj;
+
+            if (AppState.documentPassword) {
+                const jsonStr = JSON.stringify(payloadObj);
+                const encryptedStr = await CryptoUtils.encrypt(jsonStr, AppState.documentPassword);
+                dataToStore = { _isEncryptedBackup: true, payload: encryptedStr };
+            }
+            
+            dataToStore._isDirty = Store.isDirty; 
+            store.put(dataToStore, 'crash_recovery');
+        } catch (e) {}
+    },
+
+    recoverFromCrash: async () => {
+        try {
+            const db = await Store.initDB();
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.get('crash_recovery');
+            request.onsuccess = async () => {
+                const result = request.result;
+                if (!result || result._isDirty !== true) return;
+
+                if (result._isEncryptedBackup && result.payload) {
+                    const password = await UI.PasswordManager.promptForOpen("Sessione Interrotta Protetta");
+                    if (!password) return; 
+
+                    try {
+                        const decryptedJson = await CryptoUtils.decrypt(result.payload, password);
+                        AppState.documentPassword = password;
+                        Store._processLoadedMonolith(JSON.parse(decryptedJson));
+                        AppState.fileName = "Sessione Ripristinata (Senza Workspace)";
+                        Store._finalizeUIAfterLoad();
+                        UI.showStatus("unsaved"); 
+                    } catch (e) { alert("Password errata."); }
+                } else if (result.notes && result.notes.length > 0) {
+                    Store._processLoadedMonolith(result);
+                    AppState.fileName = "Sessione Ripristinata (Senza Workspace)";
+                    Store._finalizeUIAfterLoad();
+                    UI.showStatus("unsaved"); 
+                }
+            };
+        } catch (e) {}
+    },
+
+    downloadSnapshot: async () => {
+        let dataToWrite = JSON.stringify(Store.prepareForSave(), null, 2);
+        if (AppState.documentPassword) dataToWrite = await CryptoUtils.encrypt(dataToWrite, AppState.documentPassword);
+
+        const dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(dataToWrite);
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        let cleanFileName = AppState.fileName.replace(/\.json$/i, '');
+        const date = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+        downloadAnchorNode.setAttribute("download", `${cleanFileName}_Backup_${date}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+};

@@ -1,0 +1,1164 @@
+/**
+ * events-global.js
+ * Mappatura e intercettazione degli eventi globali dell'applicazione.
+ * FIX: Supporto al Middle-Click (Pulsante 3 del mouse) per l'apertura rapida dei Link e delle Note.
+ * FIX DRAG CITAZIONI: Permette il trascinamento delle citazioni tramite l'apposita maniglia.
+ * FIX SELEZIONE: Isolamento del Select-All (Ctrl+A / Cmd+A) all'interno dei Blocchi di Codice.
+ * FIX DRAG-SCROLL: Inserito "Drag Assist Engine" con calcolo matematico a 60FPS per forzare 
+ * lo scorrimento infinito della pagina (verso l'alto e verso il basso) bypassando il blocco nativo del browser.
+ */
+
+const EventsGlobal = {
+    _triggerSearchUpdate: () => {
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            AppState._currentHighlightIndex = 0;
+            EventsGlobal._executeSearchLogic(searchInput);
+        }
+    },
+
+    _executeSearchLogic: (searchInput) => {
+        const searchControls = document.getElementById('searchControls');
+        const searchCounter = document.getElementById('searchCounter');
+
+        if (AppState.currentNoteId && AppState.isEditMode && !AppState.isSwitchingNote) {
+            const currentNote = Store.getNote(AppState.currentNoteId);
+            if (currentNote && typeof Editor !== 'undefined') {
+                currentNote.content = Editor.getCleanHTML();
+            }
+        }
+
+        AppState.searchFilter = searchInput.value.toLowerCase();
+        
+        // Ridisegniamo i filtri a pillola attivi
+        if (typeof SidebarManager !== 'undefined' && SidebarManager.SearchAutocomplete) {
+            SidebarManager.SearchAutocomplete.renderPills();
+        }
+        
+        // Mostriamo i controlli se c'è un testo OPPURE se c'è un filtro proprietà attivo
+        const hasActivePropFilters = AppState.activePropertyFilters && AppState.activePropertyFilters.length > 0;
+        
+        if (searchInput.value.length > 0 || hasActivePropFilters) {
+            if (searchControls) searchControls.classList.remove('hidden');
+        } else {
+            if (searchControls) searchControls.classList.add('hidden');
+            AppState._totalHighlights = 0;
+            AppState._globalHighlights = 0;
+            AppState._currentHighlightIndex = 0;
+        }
+
+        UI.renderTree();
+        
+        if (AppState.currentNoteId) UI.selectNote(AppState.currentNoteId);
+        
+        setTimeout(() => {
+            const editor = document.getElementById('noteContent');
+            if (editor) {
+                AppState._totalHighlights = editor.querySelectorAll('mark.search-highlight').length;
+                
+                if (searchCounter) {
+                    if (AppState._totalHighlights > 0) {
+                        if (AppState._currentHighlightIndex === -1) {
+                            AppState._currentHighlightIndex = AppState._totalHighlights - 1;
+                        } else if (AppState._currentHighlightIndex >= AppState._totalHighlights) {
+                            AppState._currentHighlightIndex = 0;
+                        }
+                        AppState._focusHighlight(AppState._currentHighlightIndex);
+                    } else {
+                        searchCounter.innerText = `0/0/${AppState._globalHighlights}`;
+                    }
+                }
+            }
+        }, 150);
+    },
+
+    init: () => {
+        if (!document.getElementById('adv-global-row-selector')) {
+            const selector = document.createElement('div');
+            selector.id = 'adv-global-row-selector';
+            selector.innerHTML = '<input type="checkbox" style="pointer-events:none; margin:0; transform:scale(1.1);">';
+            document.body.appendChild(selector);
+
+            selector.addEventListener('click', () => {
+                const tableId = selector.getAttribute('data-target-table');
+                const rowId = selector.getAttribute('data-target-row');
+                
+                // Se la tabella selezionata fa parte di una citazione, non facciamo nulla.
+                if (tableId && tableId.includes('_cited_')) return;
+
+                if (tableId && rowId && typeof AdvancedTable !== 'undefined') {
+                    const cb = selector.querySelector('input');
+                    cb.checked = !cb.checked;
+                    AdvancedTable.toggleRowSelection(tableId, rowId, cb.checked);
+                }
+            });
+
+            selector.addEventListener('mouseleave', (e) => {
+                const tableId = selector.getAttribute('data-target-table');
+                const tableWrapper = document.getElementById(tableId);
+                if (!tableWrapper || (e.relatedTarget !== tableWrapper && !tableWrapper.contains(e.relatedTarget))) {
+                    selector.classList.remove('visible');
+                }
+            });
+        }
+
+        // =========================================================================
+        // DRAG ASSIST ENGINE (Motore di Scrolling Forzato e Scudo CSS)
+        // =========================================================================
+        let dragScrollTimer = null;
+        let dragScrollSpeed = 0;
+
+        const toggleDragShield = (enable, draggedType) => {
+            let shield = document.getElementById('drag-shield-style');
+            if (enable) {
+                if (!shield) {
+                    shield = document.createElement('style');
+                    shield.id = 'drag-shield-style';
+                    
+                    // Protegge il calcolo delle coordinate oscurando gli iframe e l'interno dei Widget complessi.
+                    // Lascia deliberatamente attivi i TD, TH e le Colonne per permettere il rilascio di immagini/testo al loro interno!
+                    shield.innerHTML = `
+                        iframe, object, embed { pointer-events: none !important; }
+                        .adv-widget-shell .widget-body { pointer-events: none !important; }
+                        .simple-table-wrapper td, .simple-table-wrapper th, .widget-type-columns .col-box { pointer-events: auto !important; }
+                    `;
+                    document.head.appendChild(shield);
+                }
+            } else {
+                if (shield) shield.remove();
+            }
+        };
+
+        const stopDragAssist = () => {
+            toggleDragShield(false, null);
+            if (dragScrollTimer) {
+                cancelAnimationFrame(dragScrollTimer);
+                dragScrollTimer = null;
+            }
+        };
+        // =========================================================================
+
+        const hideDropIndicator = () => {
+            const ind = document.getElementById('adv-drop-indicator');
+            if (ind) ind.style.display = 'none';
+        };
+
+        const scrollArea = document.getElementById('editorScrollContent');
+        if (scrollArea) {
+            scrollArea.addEventListener('click', (e) => {
+                if (e.target === scrollArea && AppState.isEditMode) {
+                    // 1. Controllo di sicurezza per la normale selezione nel DOM (contenteditable)
+                    const sel = window.getSelection();
+                    if (!sel.isCollapsed) return;
+
+                    // 2. FIX SELEZIONE TITOLO: Controllo di sicurezza per i campi Input/Textarea nativi
+                    const activeEl = document.activeElement;
+                    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+                        // Se c'è del testo evidenziato dentro l'input (es. Titolo), ci fermiamo!
+                        if (activeEl.selectionStart !== activeEl.selectionEnd) return;
+                    }
+
+                    // Se non c'è nulla di selezionato, possiamo procedere a forzare il focus nell'editor
+                    const editorEl = document.getElementById('noteContent');
+                    if (editorEl && activeEl !== document.getElementById('noteTitle')) {
+                        editorEl.focus();
+                        const range = document.createRange();
+                        range.selectNodeContents(editorEl);
+                        range.collapse(false); 
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('scroll', (e) => {
+            let target = e.target;
+            
+            if (target === document || target === window) {
+                target = document.body;
+            } else if (target.nodeType === 3) {
+                target = target.parentNode;
+            }
+
+            if (!target || !target.closest) return;
+
+            if (target.closest('.adv-dropdown') || target.closest('.link-modal-list') || target.closest('.adv-floating-popover')) {
+                return;
+            }
+
+            if (document.activeElement && document.activeElement.closest('.adv-dropdown')) {
+                return; 
+            }
+
+            if (typeof TableManager !== 'undefined') {
+                if (typeof TableManager.UI.hideTriggers === 'function') TableManager.UI.hideTriggers();
+                if (typeof TableManager.UI.hideMenus === 'function') TableManager.UI.hideMenus();
+                
+                // SCROLL: Forza la chiusura del Floating Menu in selezione per le Tabelle Semplici
+                if (TableManager.Selection && typeof TableManager.Selection.hideFloatingMenu === 'function') {
+                    TableManager.Selection.hideFloatingMenu();
+                }
+            }
+            if (typeof AdvancedTable !== 'undefined' && typeof AdvancedTable.closeDropdowns === 'function') {
+                AdvancedTable.closeDropdowns(true);
+            }
+            if (typeof UI !== 'undefined' && UI.Menu) {
+                UI.Menu.closeAll(true);
+            }
+            
+            document.querySelectorAll('.color-dropdown, .list-options-dropdown').forEach(el => el.classList.add('hidden'));
+
+            if (typeof LinkManager !== 'undefined') LinkManager.hideFloatingMenu();
+            if (typeof Editor !== 'undefined' && Editor.hideBookmarkMenu) Editor.hideBookmarkMenu();
+            if (typeof ImageManager !== 'undefined' && ImageManager.hideFloatingMenu) ImageManager.hideFloatingMenu();
+
+            const rowSel = document.getElementById('adv-global-row-selector');
+            if (rowSel) rowSel.classList.remove('visible');
+            
+        }, true);
+
+        document.addEventListener('mouseup', () => {
+            document.body.style.cursor = '';
+        });
+
+        window.addEventListener('beforeunload', (e) => {
+            if (Store.isDirty && AppState.fileHandle) {
+                Store.saveToFile();
+            }
+            if (AppState.fileHandle) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        const searchInput = document.getElementById('searchInput');
+        const searchClear = document.getElementById('searchClearBtn');
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                // Innesca l'autocomplete per i Tag
+                if (typeof SidebarManager !== 'undefined' && SidebarManager.SearchAutocomplete) {
+                    SidebarManager.SearchAutocomplete.show(e.target, e.target.value);
+                }
+                AppState._currentHighlightIndex = 0;
+                EventsGlobal._executeSearchLogic(searchInput);
+            });
+            
+            // FIX RIPRISTINO SUGGERIMENTI: Selezionando una nota si perdeva il blur. 
+            // Cliccando sull'input ora si riaprono i suggerimenti!
+            searchInput.addEventListener('focus', (e) => {
+                if (e.target.value) {
+                    if (typeof SidebarManager !== 'undefined' && SidebarManager.SearchAutocomplete) {
+                        SidebarManager.SearchAutocomplete.show(e.target, e.target.value);
+                    }
+                }
+            });
+            
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (e.shiftKey) AppState.findPrevious();
+                    else AppState.findNext();
+                }
+            });
+            
+            searchInput.addEventListener('blur', () => {
+                if (typeof SidebarManager !== 'undefined' && SidebarManager.SearchAutocomplete) {
+                    SidebarManager.SearchAutocomplete.scheduleHide();
+                }
+            });
+        }
+
+        if (searchClear) {
+            searchClear.addEventListener('click', () => {
+                if (searchInput) {
+                    searchInput.value = '';
+                    searchInput.focus();
+                }
+                // Svuota anche i filtri Proprietà/Tag
+                AppState.activePropertyFilters = [];
+                EventsGlobal._triggerSearchUpdate();
+            });
+        }
+
+        const editorEl = document.getElementById('noteContent');
+        if (!editorEl) return;
+
+        if (typeof Editor !== 'undefined') {
+            Editor.initMultiCursor(editorEl);
+            Editor.initCopyInterceptor(); 
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!AppState.isEditMode) return;
+            
+            // Blocco di sicurezza anti-crash per eventi sintetici scatenati dal Browser Autocomplete
+            if (!e.key) return; 
+
+            const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+            const key = e.key.toLowerCase();
+            
+            if (isCtrlOrCmd && AppState.isEditMode) {
+                if (e.shiftKey && key === 'b') {
+                    e.preventDefault();
+                    
+                    // Evitiamo che il segnalibro venga inserito dentro il blocco di codice distruggendone il DOM
+                    const sel = window.getSelection();
+                    if (sel.rangeCount > 0) {
+                        const node = sel.anchorNode;
+                        if (node && node.nodeType === 3) {
+                            if (node.parentNode.closest('.code-content')) {
+                                if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Impossibile inserire un segnalibro dentro un blocco di codice.", "warning");
+                                return;
+                            }
+                        } else if (node && node.closest('.code-content')) {
+                            if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Impossibile inserire un segnalibro dentro un blocco di codice.", "warning");
+                            return;
+                        }
+                    }
+
+                    Editor.saveSelection(); 
+                    Editor.insertBookmark();
+                    if (typeof UI !== 'undefined' && UI.Menu) UI.Menu.closeAll(true);
+                    return;
+                }
+            }
+        }, true);
+
+        editorEl.addEventListener('mousedown', (e) => {
+            if (window.innerWidth <= 600) {
+                const sb = document.getElementById('sidebar');
+                const btn = document.getElementById('sidebarToggleBtn');
+                if (sb && !sb.classList.contains('collapsed')) {
+                    sb.classList.add('collapsed');
+                    if (btn) btn.classList.remove('active');
+                }
+            }
+            
+            if (typeof Editor !== 'undefined') {
+                if (Editor.handleSmartClickEscape) Editor.handleSmartClickEscape(e);
+                if (Editor.multiSelectActive) Editor.clearMultiCursor();
+            }
+        });
+
+        document.addEventListener('dblclick', (e) => {
+            if (!AppState.isEditMode) return;
+            const resizer = e.target.closest('.adv-col-resizer');
+            if (resizer) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Disabilita resize per tabelle citate
+                const tableWrap = resizer.closest('.adv-table-wrapper, [data-widget-type="database"]');
+                if (tableWrap && tableWrap.id.includes('_cited_')) return;
+
+                const th = resizer.closest('th');
+                if (th && tableWrap) {
+                    const colId = th.getAttribute('data-col');
+                    AdvancedTable.autoFitColumn(e, tableWrap.id, colId); 
+                }
+            }
+        }, true);
+
+        editorEl.addEventListener('dragstart', (e) => {
+            if (!AppState.isEditMode) return;
+            
+            // CITAZIONI: Mai avviare un drag per nulla che si trovi in una citazione,
+            // TRANNE per la maniglia di trascinamento della citazione stessa!
+            if (e.target.closest('.block-citation') && !e.target.closest('.widget-drag-handle')) {
+                e.preventDefault();
+                return;
+            }
+
+            const thElement = e.target.closest('th');
+            
+            if (e.target.closest('.adv-col-resizer') || 
+                e.target.closest('.adv-board-card') || 
+               (thElement && thElement.hasAttribute('data-col')) || 
+                e.target.classList.contains('table-row-trigger') || 
+                e.target.classList.contains('table-col-trigger') ||
+                e.target.classList.contains('table-move-trigger')) {
+                return; 
+            }
+
+            let target = e.target;
+            
+            if (target.tagName === 'IMG' && target.hasAttribute('data-image-ref')) {
+                AppState.draggedBlockId = target.getAttribute('data-image-ref');
+                AppState.draggedBlockType = 'image';
+                e.dataTransfer.effectAllowed = 'move';
+                // Niente scudo per le immagini, vogliamo poterle inserire ovunque
+                return;
+            }
+
+            if (target.nodeType === 3) target = target.parentNode;
+            if (!target || !target.closest) return; 
+            
+            const widgetWrapper = target.closest(WidgetManager.blockSelector + ', .simple-table-wrapper');
+            
+            if (widgetWrapper) {
+                AppState.draggedBlockId = widgetWrapper.id;
+                if (widgetWrapper.hasAttribute('data-widget-type')) {
+                    AppState.draggedBlockType = widgetWrapper.getAttribute('data-widget-type');
+                } else if (widgetWrapper.classList.contains('adv-table-wrapper')) {
+                    AppState.draggedBlockType = 'database';
+                } else if (widgetWrapper.classList.contains('adv-journal-wrapper')) {
+                    AppState.draggedBlockType = 'journal';
+                } else if (widgetWrapper.classList.contains('code-wrapper')) {
+                    AppState.draggedBlockType = 'code';
+                } else if (widgetWrapper.classList.contains('block-citation')) {
+                    AppState.draggedBlockType = 'citation';
+                } else if (widgetWrapper.classList.contains('simple-table-wrapper')) {
+                    AppState.draggedBlockType = 'simple-table';
+                }
+                
+                // DRAG ASSIST: Attiviamo lo scudo e il motore per i widget complessi
+                toggleDragShield(true, AppState.draggedBlockType);
+                return;
+            }
+        });
+
+        editorEl.addEventListener('dragenter', (e) => {
+            if (typeof TableManager !== 'undefined' && TableManager.Drag && TableManager.Drag.dragState) {
+                if (typeof TableManager.Drag.handleDragEnter === 'function') {
+                    TableManager.Drag.handleDragEnter(e);
+                }
+            }
+        });
+
+        editorEl.addEventListener('dragover', (e) => {
+            if (typeof AdvancedTable !== 'undefined' && AdvancedTable.draggedColId) return;
+            
+            if (typeof TableManager !== 'undefined' && TableManager.Drag && TableManager.Drag.dragState) {
+                TableManager.Drag.handleDragOver(e);
+                return;
+            }
+
+            if (AppState.draggedBlockId && AppState.isEditMode) {
+                e.preventDefault(); 
+                e.dataTransfer.dropEffect = 'move';
+
+                // ==============================================================
+                // DRAG ASSIST: Scroll Engine a 60FPS
+                // Se mi avvicino ai margini dell'editor, scorro automaticamente
+                // ==============================================================
+                const scrollContainer = document.getElementById('editorScrollContent');
+                if (scrollContainer) {
+                    const rect = scrollContainer.getBoundingClientRect();
+                    const threshold = 100; // Zona attiva in pixel dai bordi
+                    const maxSpeed = 30; // Pixel massimi per ciclo
+
+                    dragScrollSpeed = 0;
+                    if (e.clientY - rect.top < threshold) {
+                        dragScrollSpeed = -maxSpeed * (1 - (e.clientY - rect.top) / threshold);
+                    } else if (rect.bottom - e.clientY < threshold) {
+                        dragScrollSpeed = maxSpeed * (1 - (rect.bottom - e.clientY) / threshold);
+                    }
+
+                    if (dragScrollSpeed !== 0) {
+                        if (!dragScrollTimer) {
+                            const scrollLoop = () => {
+                                scrollContainer.scrollTop += dragScrollSpeed;
+                                dragScrollTimer = requestAnimationFrame(scrollLoop);
+                            };
+                            dragScrollTimer = requestAnimationFrame(scrollLoop);
+                        }
+                    } else {
+                        if (dragScrollTimer) {
+                            cancelAnimationFrame(dragScrollTimer);
+                            dragScrollTimer = null;
+                        }
+                    }
+                }
+                // ==============================================================
+
+                let dropNode = null;
+                if (document.caretRangeFromPoint) {
+                    const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                    if (range) dropNode = range.startContainer;
+                } else if (document.caretPositionFromPoint) {
+                    const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                    if (pos) dropNode = pos.offsetNode;
+                }
+                if (!dropNode) dropNode = e.target;
+
+                let sourceBlock = null;
+                if (AppState.draggedBlockType === 'image') {
+                    sourceBlock = editorEl.querySelector(`img[data-image-ref="${AppState.draggedBlockId}"]`);
+                } else {
+                    sourceBlock = document.getElementById(AppState.draggedBlockId);
+                }
+
+                if (!sourceBlock || dropNode === sourceBlock || sourceBlock.contains(dropNode)) {
+                    hideDropIndicator();
+                    return;
+                }
+
+                let protectedParent = dropNode.nodeType === 3 ? dropNode.parentNode.closest(WidgetManager.blockSelector + ', .simple-table-wrapper') : dropNode.closest(WidgetManager.blockSelector + ', .simple-table-wrapper');
+                let targetElement = null;
+
+                // DRAG & DROP: Se stiamo trascinando un'immagine/audio dentro una tabella semplice, 
+                // disabilitiamo lo scudo protettivo per permettere il rilascio dentro le celle (TD/TH).
+                if (protectedParent && protectedParent.classList.contains('simple-table-wrapper') && ['image', 'audio', 'snippet'].includes(AppState.draggedBlockType)) {
+                    protectedParent = null; 
+                }
+
+                if (protectedParent && protectedParent !== sourceBlock) {
+                    if (AppState.draggedBlockType === 'image') {
+                        hideDropIndicator();
+                        return;
+                    }
+                    targetElement = protectedParent;
+                } else {
+                    if (!targetElement) {
+                        let targetBlock = dropNode.nodeType === 3 ? dropNode.parentNode : dropNode;
+                        targetElement = targetBlock.closest('p, div, li, td, th, h1, h2, h3, blockquote');
+                    }
+                }
+
+                // CITAZIONI: Impedire drop dentro una citazione
+                if (targetElement && targetElement.closest('.block-citation')) {
+                    hideDropIndicator();
+                    return;
+                }
+
+                if (targetElement) {
+                    const rect = targetElement.getBoundingClientRect();
+                    const isTop = e.clientY < rect.top + (rect.height / 2);
+
+                    let indicator = document.getElementById('adv-drop-indicator');
+                    if (!indicator) {
+                        indicator = document.createElement('div');
+                        indicator.id = 'adv-drop-indicator';
+                        document.body.appendChild(indicator);
+                    }
+
+                    const tag = targetElement.tagName.toUpperCase();
+                    if (['TD', 'TH', 'LI', 'BLOCKQUOTE'].includes(tag) && !targetElement.classList.contains('adv-columns-container-wrap') && !targetElement.classList.contains('block-citation')) {
+                         indicator.style.top = (rect.bottom + window.scrollY - 2) + 'px';
+                         indicator.style.left = (rect.left + window.scrollX) + 'px';
+                         indicator.style.width = rect.width + 'px';
+                    } else {
+                         const topPos = isTop ? rect.top : rect.bottom;
+                         indicator.style.top = (topPos + window.scrollY - 1) + 'px';
+                         indicator.style.left = (rect.left + window.scrollX) + 'px';
+                         indicator.style.width = rect.width + 'px';
+                    }
+
+                    indicator.style.display = 'block';
+                } else {
+                    hideDropIndicator();
+                }
+            }
+        });
+
+        editorEl.addEventListener('dragleave', (e) => {
+            if (typeof AdvancedTable !== 'undefined' && AdvancedTable.draggedColId) return;
+            
+            if (typeof TableManager !== 'undefined' && TableManager.Drag && TableManager.Drag.dragState) {
+                const ind = document.getElementById('adv-table-drop-indicator');
+                if (ind) ind.style.display = 'none';
+                return;
+            }
+
+            if (AppState.draggedBlockId) {
+                const rect = editorEl.getBoundingClientRect();
+                if (e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom) {
+                    hideDropIndicator();
+                    // Interrompiamo lo scroll forzato se il mouse esce fisicamente dall'editor
+                    if (dragScrollTimer) {
+                        cancelAnimationFrame(dragScrollTimer);
+                        dragScrollTimer = null;
+                    }
+                }
+            }
+        });
+
+        editorEl.addEventListener('dragend', (e) => {
+            if (typeof AdvancedTable !== 'undefined' && AdvancedTable.draggedColId) {
+                AdvancedTable.draggedColId = null;
+                document.querySelectorAll('th').forEach(th => { th.style.opacity = '1'; th.style.borderLeft = ''; });
+                return;
+            }
+
+            hideDropIndicator();
+            AppState.draggedBlockId = null;
+            AppState.draggedBlockType = null;
+            document.querySelectorAll('.node-content').forEach(el => el.classList.remove('drag-middle', 'drag-top', 'drag-bottom'));
+            const tc = document.getElementById('treeContainer');
+            if (tc) tc.classList.remove('drag-over-root');
+            
+            // DRAG ASSIST: Rimuove lo scudo e ferma lo scorrimento
+            stopDragAssist();
+        });
+
+        editorEl.addEventListener('drop', (e) => {
+            if (typeof AdvancedTable !== 'undefined' && AdvancedTable.draggedColId) {
+                AdvancedTable.draggedColId = null;
+                return;
+            }
+            
+            if (typeof TableManager !== 'undefined' && TableManager.Drag && TableManager.Drag.dragState) {
+                TableManager.Drag.handleDrop(e);
+                return;
+            }
+
+            hideDropIndicator();
+            
+            // DRAG ASSIST: Arresto Immediato del motore prima dei calcoli di rilascio
+            stopDragAssist();
+
+            let target = e.target;
+            if (target.nodeType === 3) target = target.parentNode;
+            if (!target || !target.closest) return;
+
+            // CITAZIONI: Rilascio bloccato
+            if (target.closest('.block-citation')) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Azione bloccata: Non puoi aggiungere elementi all'interno di una citazione.", "warning");
+                return;
+            }
+
+            if (!AppState.draggedBlockId && AppState.isEditMode) {
+                if (typeof WidgetManager !== 'undefined') {
+                    if (WidgetManager.isProtectedBlock(target) && !WidgetManager.isInsideEditableWidgetArea(target)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (typeof UI !== 'undefined' && UI.showToast) {
+                            UI.showToast("Azione bloccata: Non puoi rilasciare testo libero sopra l'infrastruttura di un Widget.", "warning");
+                        }
+                        return;
+                    }
+                }
+            }
+
+            if (target.closest('.adv-cell-text') && AppState.isEditMode && !AppState.draggedBlockId) {
+                e.preventDefault();
+                const text = e.dataTransfer.getData('text/plain');
+                document.execCommand('insertText', false, text);
+                return;
+            }
+
+            if (AppState.draggedBlockId && AppState.isEditMode) {
+                e.preventDefault(); 
+                e.stopPropagation();
+
+                const blockId = AppState.draggedBlockId;
+
+                let sourceBlock = null;
+
+                if (AppState.draggedBlockType === 'image') {
+                    sourceBlock = editorEl.querySelector(`img[data-image-ref="${blockId}"]`);
+                } else {
+                    sourceBlock = document.getElementById(blockId);
+                }
+
+                if (!sourceBlock) {
+                    AppState.draggedBlockId = null;
+                    AppState.draggedBlockType = null;
+                    return;
+                }
+
+                let dropNode = null;
+                let range = null;
+                
+                if (document.caretRangeFromPoint) {
+                    range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                    if (range) dropNode = range.startContainer;
+                } else if (document.caretPositionFromPoint) {
+                    const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                    if (pos) {
+                        dropNode = pos.offsetNode;
+                        range = document.createRange();
+                        range.setStart(pos.offsetNode, pos.offset);
+                        range.collapse(true);
+                    }
+                }
+
+                if (!dropNode) dropNode = target; 
+
+                if (dropNode === sourceBlock || sourceBlock.contains(dropNode)) {
+                    AppState.draggedBlockId = null;
+                    AppState.draggedBlockType = null;
+                    return;
+                }
+
+                let protectedParent = dropNode.nodeType === 3 ? dropNode.parentNode.closest(WidgetManager.blockSelector + ', .simple-table-wrapper') : dropNode.closest(WidgetManager.blockSelector + ', .simple-table-wrapper');
+                let targetElement = null;
+
+                // DRAG & DROP: Ignora lo scudo se rilasciamo l'immagine in una tabella semplice
+                if (protectedParent && protectedParent.classList.contains('simple-table-wrapper') && ['image', 'audio', 'snippet'].includes(AppState.draggedBlockType)) {
+                    protectedParent = null; 
+                }
+
+                if (protectedParent && AppState.draggedBlockType === 'image') {
+                    UI.showToast("Le immagini non possono essere inserite all'interno di un componente avanzato.", "warning");
+                    AppState.draggedBlockId = null;
+                    AppState.draggedBlockType = null;
+                    return;
+                }
+                
+                if (typeof Editor !== 'undefined') Editor.saveSnapshot();
+
+                if (protectedParent && protectedParent !== sourceBlock) {
+                    const rect = protectedParent.getBoundingClientRect();
+                    if (e.clientY < rect.top + (rect.height / 2)) {
+                        protectedParent.parentNode.insertBefore(sourceBlock, protectedParent);
+                    } else {
+                        protectedParent.parentNode.insertBefore(sourceBlock, protectedParent.nextSibling);
+                    }
+                } 
+                else {
+                    if (!targetElement) {
+                        let targetBlock = dropNode.nodeType === 3 ? dropNode.parentNode : dropNode;
+                        targetElement = targetBlock.closest('p, div, li, td, th, h1, h2, h3, blockquote');
+                    }
+
+                    if (targetElement && targetElement.id !== 'noteContent' && !targetElement.classList.contains('editor-content')) {
+                        const tag = targetElement.tagName.toUpperCase();
+
+                        if (['TD', 'TH', 'LI', 'BLOCKQUOTE'].includes(tag) && !targetElement.classList.contains('adv-columns-container-wrap') && !targetElement.classList.contains('block-citation')) {
+                            if (range) {
+                                range.insertNode(sourceBlock);
+                            } else {
+                                targetElement.appendChild(sourceBlock);
+                            }
+                        } 
+                        else {
+                            const rect = targetElement.getBoundingClientRect();
+                            if (e.clientY < rect.top + (rect.height / 2)) {
+                                targetElement.parentNode.insertBefore(sourceBlock, targetElement);
+                            } else {
+                                targetElement.parentNode.insertBefore(sourceBlock, targetElement.nextSibling);
+                            }
+                        }
+                    } else {
+                        editorEl.appendChild(sourceBlock); 
+                    }
+                }
+
+                window.getSelection().removeAllRanges();
+                AppState.draggedBlockId = null;
+                AppState.draggedBlockType = null;
+
+                setTimeout(() => {
+                    if (typeof WidgetManager !== 'undefined') WidgetManager.mountAll();
+                    if (typeof Store !== 'undefined') Store.triggerAutoSave();
+                }, 10);
+
+                return;
+            }
+
+            setTimeout(() => {
+                if (typeof WidgetManager !== 'undefined') WidgetManager.mountAll();
+                if (typeof Store !== 'undefined') Store.triggerAutoSave();
+            }, 10);
+        });
+
+        // -------------------------------------------------------------
+        // AUXCLICK (MIDDLE CLICK SUI LINK)
+        // -------------------------------------------------------------
+        document.addEventListener('auxclick', (e) => {
+            if (e.button === 1) { // 1 = Tasto centrale (Rotellina)
+                const link = e.target.closest('a');
+                if (link && AppState.isEditMode) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (typeof LinkManager !== 'undefined') {
+                        LinkManager.activeLink = link;
+                        LinkManager.openCurrentLink();
+                    }
+                }
+            }
+        });
+
+        editorEl.addEventListener('keydown', (e) => {
+            // Check di sicurezza: Non c'è e.key se l'evento è sintetico!
+            if (!e.key) return;
+
+            const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+            const key = e.key.toLowerCase();
+
+            // ISOLAMENTO SELECT-ALL (Ctrl+A) PER BLOCCHI DI CODICE
+            if (isCtrlOrCmd && key === 'a' && AppState.isEditMode) {
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    let node = sel.anchorNode;
+                    if (node && node.nodeType === 3) node = node.parentNode;
+                    
+                    const codeBlock = node ? node.closest('.code-content') : null;
+                    if (codeBlock) {
+                        e.preventDefault();
+                        const range = document.createRange();
+                        range.selectNodeContents(codeBlock);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        return;
+                    }
+                }
+            }
+
+            if (isCtrlOrCmd && key === 'x' && AppState.isEditMode) {
+                const selection = window.getSelection();
+                if (!selection.isCollapsed && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    const container = range.commonAncestorContainer;
+                    const elementNode = container.nodeType === 3 ? container.parentNode : container;
+                    
+                    const selectedProtectedNodes = elementNode.querySelectorAll ? elementNode.querySelectorAll(WidgetManager.blockSelector) : [];
+                    const intersectsProtected = Array.from(selectedProtectedNodes).some(node => selection.containsNode(node, true));
+                    const isInsideProtected = WidgetManager.isProtectedBlock(elementNode);
+
+                    if (intersectsProtected || (isInsideProtected && !WidgetManager.isInsideEditableWidgetArea(elementNode))) {
+                        e.preventDefault();
+                        alert("⚠️ Taglio non consentito: Stai tentando di tagliare elementi complessi (Widget) mischiati a testo normale.\nPer evitare corruzioni, sposta o elimina questi elementi tramite i loro menu dedicati.");
+                        return;
+                    }
+                }
+            }
+
+            if (typeof Editor !== 'undefined') {
+                if (!isCtrlOrCmd && !e.altKey && AppState.isEditMode) {
+                    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                        if (typeof Editor.handleTableNavigation === 'function') {
+                            if (Editor.handleTableNavigation(e)) return;
+                        }
+                    }
+                }
+
+                if (e.key === 'Enter') { Editor.registerTypingStart(e.key); Editor.handleEnterKey(e); }
+                if (e.key === 'Tab') { Editor.registerTypingStart(e.key); Editor.handleTabKey(e); }
+                if (e.key === 'Backspace') { Editor.registerTypingStart(e.key); Editor.handleBackspaceKey(e); }
+                if (e.key === 'Delete') { Editor.registerTypingStart(e.key); Editor.handleDeleteKey(e); }
+                
+                if (!isCtrlOrCmd && !e.altKey && AppState.isEditMode) {
+                    Editor.handleBracketAutoClose(e);
+                    Editor.handleFormatEscape(e);
+                }
+            }
+
+            if (isCtrlOrCmd && AppState.isEditMode) {
+                if (key === 'b') { e.preventDefault(); Editor.exec('bold'); return; }
+                if (key === 'i') { e.preventDefault(); Editor.exec('italic'); return; }
+                if (key === 'u') { e.preventDefault(); Editor.exec('underline'); return; }
+                if (key === 'k') { e.preventDefault(); Editor.toggleCase(); return; }
+                
+                if (key === 'd') { 
+                    e.preventDefault(); 
+                    Editor.triggerMultiCursor(); 
+                    return; 
+                }
+            }
+
+            if (e.altKey && AppState.isEditMode) {
+                if (e.key === 'ArrowUp') { e.preventDefault(); Editor.moveBlock(-1); return; }
+                if (e.key === 'ArrowDown') { e.preventDefault(); Editor.moveBlock(1); return; }
+            }
+
+            if (isCtrlOrCmd && !e.shiftKey && key === 'z') {
+                e.preventDefault();
+                Editor.undo();
+                return;
+            }
+            if ((isCtrlOrCmd && key === 'y') || (isCtrlOrCmd && e.shiftKey && key === 'z')) {
+                e.preventDefault();
+                Editor.redo();
+                return;
+            }
+
+            if (!isCtrlOrCmd && !e.altKey && e.key.length === 1) {
+                const sel = window.getSelection();
+                if (!sel.isCollapsed && sel.rangeCount > 0) {
+                    if (typeof Editor !== 'undefined' && Editor.handleBulkWidgetDeletion) {
+                        if (!Editor.handleBulkWidgetDeletion()) {
+                            e.preventDefault(); 
+                            return;
+                        }
+                    }
+                }
+                if (typeof Editor !== 'undefined') Editor.registerTypingStart(e.key);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (typeof TableManager !== 'undefined') {
+                    if (TableManager.Drag && TableManager.Drag.dragState) TableManager.Drag.handleMouseUp();
+                    if (TableManager.resizingCol) TableManager.handleMouseUp();
+                    if (typeof TableManager.UI.hideTriggers === 'function') TableManager.UI.hideTriggers();
+                }
+                if (typeof AdvancedTable !== 'undefined' && AdvancedTable.resizingCol) {
+                    AdvancedTable.handleGlobalMouseUp({ pageX: AdvancedTable.startX }); 
+                }
+                if (typeof AdvancedCalendar !== 'undefined' && AdvancedCalendar.resizeState) {
+                    AdvancedCalendar.onResizeEnd({ pageY: AdvancedCalendar.resizeState.startY });
+                }
+                if (typeof AdvancedTimeline !== 'undefined' && AdvancedTimeline.dragState) {
+                    AdvancedTimeline.onDragEnd({ pageX: AdvancedTimeline.dragState.startX });
+                }
+                if (typeof UI !== 'undefined' && UI.Menu) {
+                    UI.Menu.closeAll(true);
+                }
+                if (typeof Editor !== 'undefined' && Editor.multiSelectActive) {
+                    Editor.clearMultiCursor();
+                }
+                if (typeof LinkManager !== 'undefined') LinkManager.hideFloatingMenu();
+                if (typeof Editor !== 'undefined' && Editor.hideBookmarkMenu) Editor.hideBookmarkMenu();
+                
+                const drawer = document.getElementById('advGlobalDrawer');
+                if (drawer && drawer.classList.contains('open')) {
+                    if (typeof UI.closeDrawer !== 'undefined') UI.closeDrawer();
+                }
+            }
+        });
+
+        editorEl.addEventListener('paste', (e) => {
+            if (AppState.isEditMode && typeof Editor !== 'undefined' && Editor.handlePaste) {
+                Editor.handlePaste(e);
+            }
+        });
+
+        editorEl.addEventListener('input', () => {
+            if (!AppState.isSwitchingNote) {
+                if (typeof Editor !== 'undefined' && Editor.handleMarkdownShortcuts) {
+                    Editor.handleMarkdownShortcuts();
+                }
+                
+                if (typeof UI !== 'undefined' && UI.handleEditorInput) {
+                    UI.handleEditorInput();
+                }
+            }
+        });
+
+        // FIX UX CURSORE: Inibiamo esplicitamente l'apparizione delle toolbar tabella
+        // se il mouse è stato rilasciato sopra un'immagine!
+        const checkSelectionAll = (e) => {
+            if (e && e.target && e.target.tagName === 'IMG') return;
+            
+            if (typeof TableManager !== 'undefined' && typeof TableManager.UI.checkSelection === 'function') {
+                TableManager.UI.checkSelection();
+            }
+            if (typeof Editor !== 'undefined') Editor.checkContext();
+        };
+
+        editorEl.addEventListener('mouseup', checkSelectionAll);
+        editorEl.addEventListener('keyup', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) checkSelectionAll(e);
+        });
+
+        editorEl.addEventListener('change', (e) => {
+            if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
+                const now = new Date().toLocaleString();
+                if (e.target.checked) e.target.setAttribute('checked', 'true');
+                else e.target.removeAttribute('checked');
+                e.target.setAttribute('title', `Modificato: ${now}`);
+                if (AppState.currentNoteId && !AppState.isSwitchingNote) {
+                    const note = Store.getNote(AppState.currentNoteId);
+                    note.content = editorEl.innerHTML;
+                    if (typeof Store !== 'undefined') Store.triggerAutoSave();
+                }
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            let target = e.target;
+
+            // CHIUSURA AUTOCOMPLETE: Se clicchi fuori dal popup o dalla barra, si chiude.
+            if (!target.closest('#searchInput') && !target.closest('.adv-filter-autocomplete')) {
+                if (typeof SidebarManager !== 'undefined' && SidebarManager.SearchAutocomplete) {
+                    SidebarManager.SearchAutocomplete.hide();
+                }
+            }
+
+            if (target.nodeType === 3) target = target.parentNode;
+            if (!target || !target.closest) return;
+
+            const isTd = target.closest('td');
+            if (isTd && isTd.closest('.adv-table') && AppState.isEditMode) {
+                if (!target.closest('.is-editing')) {
+                    document.querySelectorAll('.adv-table td.is-editing').forEach(c => c.classList.remove('is-editing'));
+                    isTd.focus({preventScroll: true});
+                }
+            }
+
+            if (target.closest('.snippet-copy-btn')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const btn = target.closest('.snippet-copy-btn');
+                const wrapper = btn.closest('.adv-copy-snippet');
+                if (wrapper) {
+                    const textSpan = wrapper.querySelector('.snippet-text');
+                    if (textSpan) {
+                        const textToCopy = textSpan.innerText.trim();
+                        navigator.clipboard.writeText(textToCopy).then(() => {
+                            btn.classList.add('copied');
+                            btn.innerHTML = typeof Icons !== 'undefined' ? Icons.checkCircle : '✓';
+                            if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Testo copiato!", "success");
+                            
+                            setTimeout(() => {
+                                btn.classList.remove('copied');
+                                btn.innerHTML = typeof Icons !== 'undefined' ? Icons.clipboard : '📋';
+                            }, 1500);
+                        });
+                    }
+                }
+                return;
+            }
+
+            if (target.closest('.cit-toggle')) {
+                e.preventDefault();
+                e.stopPropagation();
+                const block = target.closest('.block-citation');
+                if (!block) return;
+
+                const body = block.querySelector('.citation-body');
+                if (!body) return;
+
+                const isCollapsed = block.getAttribute('data-collapsed') === 'true';
+
+                if (isCollapsed) {
+                    block.removeAttribute('data-collapsed');
+                    body.style.display = 'block';
+                    target.closest('.cit-toggle').style.transform = 'rotate(0deg)';
+                } else {
+                    block.setAttribute('data-collapsed', 'true');
+                    body.style.display = 'none';
+                    target.closest('.cit-toggle').style.transform = 'rotate(-90deg)';
+                }
+                if (typeof Store !== 'undefined') Store.triggerAutoSave();
+                return;
+            }
+
+            const bookmark = target.closest('.adv-bookmark-marker');
+            if (bookmark) {
+                e.preventDefault();
+                e.stopPropagation(); 
+                if (typeof Editor !== 'undefined' && Editor.showBookmarkMenu) {
+                    Editor.showBookmarkMenu(bookmark);
+                }
+                if (typeof LinkManager !== 'undefined') LinkManager.hideFloatingMenu();
+                return;
+            }
+
+            const inlineNote = target.closest('.inline-note-marker');
+            if (inlineNote) {
+                e.preventDefault();
+                if (inlineNote.closest('.block-citation')) return; 
+                
+                if (typeof Editor !== 'undefined' && Editor.handleInlineNoteClick) {
+                    Editor.handleInlineNoteClick(inlineNote);
+                }
+                return;
+            }
+
+            if (target.tagName === 'A' || target.closest('a')) {
+                const link = target.tagName === 'A' ? target : target.closest('a');
+
+                if (link.hasAttribute('download')) {
+                    return; 
+                }
+
+                if (AppState.isEditMode && !e.ctrlKey && !e.metaKey) {
+                    // CITAZIONI: Se è dentro una citazione, clicca direttamente il link bypassando il menu fluttuante
+                    if (link.closest('.block-citation')) {
+                        if (link.classList.contains('internal-link')) {
+                            e.preventDefault();
+                            const noteId = link.getAttribute('data-note-id');
+                            const anchor = link.getAttribute('data-anchor');
+                            const refId = link.getAttribute('data-ref-id'); 
+                            if (noteId) UI.selectNote(noteId, anchor, refId);
+                        } else if (link.classList.contains('file-link')) {
+                            e.preventDefault();
+                            const path = link.getAttribute('data-file-path');
+                            if (path) LinkManager.openViewer(path, link);
+                        } else {
+                            if (link.href && link.href.startsWith('http')) {
+                                e.preventDefault();
+                                window.open(link.href, '_blank');
+                            }
+                        }
+                        return;
+                    }
+
+                    e.preventDefault();
+                    e.stopPropagation(); 
+                    
+                    if (typeof LinkManager !== 'undefined') LinkManager.showFloatingMenu(link);
+                    if (typeof Editor !== 'undefined' && Editor.hideBookmarkMenu) Editor.hideBookmarkMenu();
+                    return;
+                } else {
+                    if (link.classList.contains('internal-link')) {
+                        e.preventDefault();
+                        const noteId = link.getAttribute('data-note-id');
+                        const anchor = link.getAttribute('data-anchor');
+                        const refId = link.getAttribute('data-ref-id'); 
+                        if (noteId) UI.selectNote(noteId, anchor, refId);
+                    } else if (link.classList.contains('file-link')) {
+                        e.preventDefault();
+                        const path = link.getAttribute('data-file-path');
+                        if (path) LinkManager.openViewer(path, link);
+                    } else {
+                        if (link.href && link.href.startsWith('http')) {
+                            e.preventDefault();
+                            window.open(link.href, '_blank');
+                        }
+                    }
+                    return;
+                }
+            }
+
+            if (typeof LinkManager !== 'undefined') LinkManager.hideFloatingMenu();
+            if (typeof Editor !== 'undefined' && Editor.hideBookmarkMenu) Editor.hideBookmarkMenu();
+
+            if (target.classList.contains('code-copy-btn') || target.classList.contains('code-action-copy')) {
+                e.preventDefault();
+                const wrapper = target.closest('.code-wrapper');
+
+                const clone = wrapper.cloneNode(true);
+                const actionBars = clone.querySelectorAll('.code-action-bar');
+                actionBars.forEach(bar => bar.remove());
+
+                let textToCopy = "";
+                if (wrapper.id && AppState.databases) {
+                    const trueId = wrapper.id.split('_cited_')[0];
+                    if (AppState.databases[trueId] && AppState.databases[trueId].content !== undefined) {
+                        textToCopy = AppState.databases[trueId].content;
+                    }
+                }
+                
+                if (!textToCopy) textToCopy = clone.innerText.trim();
+
+                if (textToCopy) {
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        target.style.color = "var(--accent-color)";
+                        if (typeof UI !== 'undefined' && UI.showToast) {
+                            UI.showToast("Copiato negli appunti!", "success");
+                        }
+                        setTimeout(() => { target.style.color = ""; }, 1500);
+                    }).catch(err => {
+                        console.error("Errore copia:", err);
+                    });
+                }
+            }
+        });
+
+        const aspectMenuTrigger = document.getElementById('aspectMenuTrigger');
+        const aspectSubMenu = document.getElementById('aspectSubMenu');
+
+        if (aspectMenuTrigger && aspectSubMenu) {
+            aspectMenuTrigger.addEventListener('mouseenter', () => {
+                const rect = aspectMenuTrigger.getBoundingClientRect();
+                if (rect.right + 180 > window.innerWidth) {
+                    aspectSubMenu.style.left = 'auto';
+                    aspectSubMenu.style.right = '100%';
+                } else {
+                    aspectSubMenu.style.left = '100%';
+                    aspectSubMenu.style.right = 'auto';
+                }
+            });
+        }
+    }
+};

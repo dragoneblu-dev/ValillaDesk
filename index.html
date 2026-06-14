@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor di Appunti Locale</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
+
+    <link rel="stylesheet" href="css/variables.css">
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/ui-components.css">
+    <link rel="stylesheet" href="css/colors.css">
+    <link rel="stylesheet" href="css/editor.css">
+    <link rel="stylesheet" href="css/widgets.css">
+    <link rel="stylesheet" href="css/tables.css">
+    <link rel="stylesheet" href="css/advanced-table.css">
+    <link rel="stylesheet" href="css/advanced-table-board.css">
+    <link rel="stylesheet" href="css/advanced-table-calendar.css">
+    <link rel="stylesheet" href="css/advanced-table-timeline.css">
+    <link rel="stylesheet" href="css/code.css">
+    <link rel="stylesheet" href="css/modals.css">
+
+    <script src="js/icons.js"></script>
+</head>
+
+<body class="light-theme">
+
+    <div id="advCustomTooltip" class="adv-custom-tooltip"></div>
+
+    <header>
+        <div class="brand">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                </path>
+            </svg>
+            <span id="fileNameDisplay" onclick="UI.goHome()" style="cursor:pointer;" title="Torna alla Home">Nessun Workspace</span>
+            <button id="editToggleBtn" class="btn" style="margin-left: 15px;" onclick="UI.toggleEditMode()">
+                <script>document.write(Icons.edit)</script> Modifica
+            </button>
+            <span id="saveStatus" class="status-pill status-saved hidden">Salvato</span>
+        </div>
+
+        <div class="controls-group">
+            <div id="noteContextActions" style="display:flex; align-items:center; gap:8px;" class="hidden">
+                <button class="icon-btn" onclick="UI.goUpOneLevel()" id="goUpBtn" title="Risali di un livello (Genitore)">
+                    <script>document.write(Icons.cornerUpLeft)</script>
+                </button>
+                <button class="icon-btn" onclick="UI.toggleMark()" id="markBtn" title="Aggiungi ai Preferiti">
+                    <script>document.write(Icons.starEmpty)</script>
+                </button>
+                <button id="btnNoteProperties" class="icon-btn" title="Proprietà / Tag Pagina">
+                    <script>document.write(Icons.tag)</script>
+                </button>
+                <button id="btnNoteInfo" class="icon-btn" title="Informazioni e Collegamenti Nota" onclick="UI.openNoteInfoPanel()">
+                    <script>document.write(Icons.info)</script>
+                </button>
+                <div class="separator"></div>
+            </div>
+
+            <button class="icon-btn active" id="sidebarToggleBtn" onclick="UI.toggleSidebar()" title="Mostra/Nascondi Struttura documento">
+                <script>document.write(Icons.focus)</script>
+            </button>
+            
+            <button class="icon-btn" id="minimapBtn" onclick="UI.toggleMinimap()" title="Toggle Minimap">
+                <script>document.write(Icons.minimap)</script>
+            </button>
+            
+            <div class="separator"></div>
+
+            <div style="position: relative;" id="mainMenuWrapper">
+                <button class="icon-btn main-menu-btn" onclick="UI.toggleMainMenu()" title="Menu Principale">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+
+                <div id="mainMenuDropdown" class="main-menu-dropdown hidden">
+                    <div class="menu-item" onclick="Store.createWorkspace(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.folderOpen)</script>
+                        </span> Crea Nuovo Workspace...
+                    </div>
+                    <div class="menu-item" onclick="Store.openWorkspace(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.folder)</script>
+                        </span> Apri Workspace Esistente...
+                    </div>
+                    <div class="menu-item" onclick="Store.downloadSnapshot(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.download)</script>
+                        </span> Scarica Backup JSON
+                    </div>
+                    
+                    <div class="menu-item" onclick="UI.Trash.open(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.trash)</script>
+                        </span> Cestino
+                    </div>
+                    
+                    <div class="separator-h"></div>
+                    <div class="menu-item" onclick="PackageManager.importModpack(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.lightning || '📦')</script>
+                        </span> Installa Modulo (Modpack)...
+                    </div>
+                    <div class="menu-item" onclick="ExportManager.importMarkdown(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.file)</script>
+                        </span> Importa file Markdown...
+                    </div>
+                    <div class="menu-item" onclick="ExportManager.openModal()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.export)</script>
+                        </span> Esporta Doc. Unico...
+                    </div>
+                    <div class="separator-h"></div>
+
+                    <div class="menu-item" onclick="UI.toggleWordWrap(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg" id="wordWrapIcon">
+                            <script>document.write(Icons.square)</script>
+                        </span>
+                        <span id="wordWrapBtn">No Word Wrap</span>
+                    </div>
+                    <div class="menu-item" onclick="UI.toggleContinuousEdit(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg" id="continuousEditIcon">
+                            <script>document.write(Icons.square)</script>
+                        </span>
+                        <span id="continuousEditBtn">Edit Continuo</span>
+                    </div>
+
+                    <div class="separator-h"></div>
+
+                    <div class="adv-menu-item has-submenu" style="padding: 8px 12px; font-size: 0.9rem;"
+                        id="aspectMenuTrigger">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="menu-icon-svg">
+                                <script>document.write(Icons.palette)</script>
+                            </span> Aspetto
+                        </div>
+                        <span class="adv-menu-arrow">›</span>
+
+                        <div class="adv-submenu" id="aspectSubMenu" style="min-width: 180px; top:-5px;">
+                            <div class="menu-label"
+                                style="padding: 4px 8px; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">
+                                Layout Pagina</div>
+                            
+                            <div class="menu-item" onclick="UI.togglePageWidth(); UI.toggleMainMenu()">
+                                <span class="menu-icon-svg" id="pageWidthIcon">
+                                    <script>document.write(Icons.widthFit)</script>
+                                </span>
+                                <span id="pageWidthBtn">Larghezza: Standard</span>
+                            </div>
+
+                            <div class="separator-h"></div>
+
+                            <div class="menu-label"
+                                style="padding: 4px 8px; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">
+                                Tema Colori</div>
+                            <div class="menu-item" onclick="UI.setTheme('white'); UI.toggleMainMenu()">
+                                <span id="theme-white-check"
+                                    style="width: 15px; font-weight:bold; color:var(--accent-color)"></span> Bianco Puro
+                            </div>
+                            <div class="menu-item" onclick="UI.setTheme('light'); UI.toggleMainMenu()">
+                                <span id="theme-light-check"
+                                    style="width: 15px; font-weight:bold; color:var(--accent-color)">✓</span> Carta avorio
+                            </div>
+                            <div class="menu-item" onclick="UI.setTheme('pastel'); UI.toggleMainMenu()">
+                                <span id="theme-pastel-check"
+                                    style="width: 15px; font-weight:bold; color:var(--accent-color)"></span> Fresco Pastello
+                            </div>
+                            <div class="menu-item" onclick="UI.setTheme('dark'); UI.toggleMainMenu()">
+                                <span id="theme-dark-check"
+                                    style="width: 15px; font-weight:bold; color:var(--accent-color)"></span> Blu lavagna
+                            </div>
+                            <div class="menu-item" onclick="UI.setTheme('notion-dark'); UI.toggleMainMenu()">
+                                <span id="theme-notion-dark-check"
+                                    style="width: 15px; font-weight:bold; color:var(--accent-color)"></span> Notte stellata
+                            </div>
+                            <div class="separator-h"></div>
+                            <div class="menu-label"
+                                style="padding: 4px 8px; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase;">
+                                Zoom Testo</div>
+                            <div style="display:flex; gap:5px; padding:4px 8px;">
+                                <button class="btn" style="flex:1; justify-content:center; font-weight:bold;"
+                                    onclick="UI.changeFontSize(-1); event.stopPropagation();">A -</button>
+                                <button class="btn" style="flex:1; justify-content:center; font-weight:bold;"
+                                    onclick="UI.changeFontSize(1); event.stopPropagation();">A +</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="separator-h"></div>
+                    <div class="menu-item" onclick="Manual.open(); UI.toggleMainMenu()">
+                        <span class="menu-icon-svg">
+                            <script>document.write(Icons.book)</script>
+                        </span> Manuale d'Uso
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="layout">
+        <aside id="sidebar">
+            <div class="search-box">
+                <div class="search-wrapper">
+                    <input type="text" id="searchInput" class="search-input" placeholder="Cerca o digita Tag..." autocomplete="off">
+                    <div class="search-controls hidden" id="searchControls">
+                        <span class="search-counter" id="searchCounter">0/0</span>
+                        <button class="search-nav-btn" onclick="AppState.findPrevious()" title="Precedente">
+                            <script>document.write(Icons.searchUp)</script>
+                        </button>
+                        <button class="search-nav-btn" onclick="AppState.findNext()" title="Successivo">
+                            <script>document.write(Icons.searchDown)</script>
+                        </button>
+                        <button id="searchClearBtn" class="search-clear-btn" title="Chiudi ricerca e filtri">✕</button>
+                    </div>
+                </div>
+                <!-- Contenitore Filtri Attivi (Pills) -->
+                <div id="activeSearchFilters" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; padding:0 2px;"></div>
+            </div>
+            
+            <div class="sidebar-tabs-container">
+                <button class="sidebar-tab active" id="tab-notes" onclick="UI.switchToNotes()" title="Note">
+                    <span class="menu-icon-svg" style="display:flex; width:16px; height:16px;"><script>document.write(Icons.file)</script></span>
+                    <span class="tab-label">Note</span>
+                </button>
+                <button class="sidebar-tab" id="tab-favorites" onclick="UI.toggleFavoritesInTree()" title="Preferiti">
+                    <span class="menu-icon-svg" style="display:flex; width:16px; height:16px;"><script>document.write(Icons.starEmpty)</script></span>
+                    <span class="tab-label">Preferiti</span>
+                </button>
+                <button class="sidebar-tab" id="tab-bookmarks" onclick="UI.toggleBookmarksInTree()" title="Segnalibri">
+                    <span class="menu-icon-svg" style="display:flex; width:16px; height:16px;"><script>document.write(Icons.bookmark)</script></span>
+                    <span class="tab-label">Segnalibri</span>
+                </button>
+                <button class="sidebar-tab" id="tab-databases" onclick="UI.toggleDbNotesInTree()" title="Database">
+                    <span class="menu-icon-svg" style="display:flex; width:16px; height:16px;"><script>document.write(Icons.tableDatabase)</script></span>
+                    <span class="tab-label">Database</span>
+                </button>
+
+                <div class="sidebar-tools">
+                    <button class="icon-btn" onclick="UI.addNote(null)" title="Nuova Nota">+</button>
+                </div>
+            </div>
+
+            <div id="treeContainer" class="tree-scroll" ondragover="UI.handleDragOverRoot(event)"
+                ondrop="UI.handleDropRoot(event)">
+            </div>
+        </aside>
+
+        <main id="mainArea">
+            <div id="emptyState" class="empty-state">
+                <div id="onboardingView" class="hidden" style="display:flex; flex-direction:column; align-items:center; max-width:700px; margin: 0 auto; text-align:center; padding-top: 40px;">
+                    <div style="margin-bottom: 25px; color:var(--accent-color); transform: scale(1.8);">
+                        <script>document.write(Icons.lightning || Icons.book)</script>
+                    </div>
+                    <h1 style="margin-bottom: 10px; font-size: 2.2rem; color: var(--text-primary);">Il tuo Secondo Cervello.<br>Ora con i superpoteri.</h1>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 25px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold;">
+                        Realizzato da dragoneblu@gmail.com
+                    </div>
+                    <p style="font-size:1.1rem; line-height:1.7; color:var(--text-secondary); margin-bottom: 35px;">
+                        Non il solito blocco note. Scrivi liberamente, ed organizza con la mente di uno sviluppatore: trasforma le tue idee in <b>database relazionali</b>, <b>diagrammi di Gantt</b>, bacheche Kanban e grafici interattivi.<br><br>
+                        Imposta le tue automazioni e goditi un workspace che gira alla velocità della luce. Zero cloud, zero abbonamenti: <b>tutto resta al sicuro, solo sul tuo computer.</b>
+                    </p>
+                    <div style="display:flex; gap:15px; justify-content:center;">
+                        <button class="btn btn-primary" style="padding: 10px 20px; font-size: 1rem;" onclick="Store.createWorkspace()">
+                            <span style="display:inline-block; margin-right:5px;">
+                                <script>document.write(Icons.folderOpen)</script>
+                            </span> Crea Nuovo Workspace
+                        </button>
+                        <button class="btn" style="padding: 10px 20px; font-size: 1rem;" onclick="Store.openWorkspace()">
+                            <span style="display:inline-block; margin-right:5px;">
+                                <script>document.write(Icons.folder)</script>
+                            </span> Apri Workspace Esistente
+                        </button>
+                    </div>
+                </div>
+
+                <div id="homeDocumentView" class="hidden"
+                    style="width: 100%; max-width: 900px; display:flex; flex-direction:column; gap:15px; margin: 0 auto;">
+                    <div
+                        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:15px;">
+                        <h2 style="margin:0;">Dashboard Documento</h2>
+                        <button class="btn btn-primary" onclick="CitationManager.openModal(true)">+ Aggiungi Citazione
+                            in Home</button>
+                    </div>
+                    <div id="homeCitationsContainer"
+                        style="width:100%; display:flex; flex-direction:column; gap:10px; text-align:left;">
+                    </div>
+                </div>
+
+                <div id="readModeView" class="hidden" style="text-align:center; max-width:600px; margin-top: 50px;">
+                    <div style="margin-bottom: 20px; color:var(--text-secondary);">
+                        <script>document.write(Icons.lock)</script>
+                    </div>
+                    <h2>Modalità Lettura</h2>
+                    <p>Seleziona una nota dalla barra laterale per visualizzarla.<br>Clicca "Modifica" in alto a destra
+                        per apportare cambiamenti.</p>
+                </div>
+            </div>
+
+            <!-- EDITOR WRAPPER -->
+            <div id="editorWrapper" class="editor-container hidden read-mode">
+                
+                <div id="editorToolbar" class="toolbar hidden">
+                    
+                    <div style="display:flex; gap:2px;">
+                        <button onclick="Editor.undo()" title="Annulla Ultima Modifica (Ctrl+Z)"><script>document.write(Icons.undo)</script></button>
+                        <button onclick="Editor.redo()" title="Ripeti (Ctrl+Y / Ctrl+Shift+Z)"><script>document.write(Icons.redo)</script></button>
+                    </div>
+                    <button onmousedown="event.preventDefault(); Editor.saveSelection();" onclick="Editor.clearFormatting()" title="Gomma Formattazioni"><script>document.write(Icons.eraser)</script></button>
+                    
+                    <div class="separator" style="height:38px;"></div>
+
+                    <button id="btnFormatB" onclick="Editor.exec('bold')" title="Grassetto (Ctrl+B)"><b>B</b></button>
+                    <button id="btnFormatI" onclick="Editor.exec('italic')" title="Corsivo (Ctrl+I)"><i>I</i></button>
+                    <button id="btnFormatU" onclick="Editor.exec('underline')" title="Sottolineato (Ctrl+U)"><u>U</u></button>
+                    <button id="btnFormatS" onclick="Editor.exec('strikeThrough')" title="Barrato"><s>S</s></button>
+                    <button onclick="Editor.toggleCase()" title="Maiuscolo/Minuscolo (Ctrl+K)"><script>document.write(Icons.caseToggle)</script></button>
+                    
+                    <div class="separator" style="height:38px;"></div>
+
+                    <div class="color-picker-group">
+                        <button class="btn-color-main" onclick="ColorManager.applyLast('highlight')" title="Evidenziatore">
+                            <span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px;"><script>document.write(Icons.pen)</script></span>
+                            <div id="hlBar" class="btn-color-bar hl-c5"></div>
+                        </button>
+                        <button id="btnHlMenu" class="btn-color-arrow" onclick="ColorManager.openColorMenu(event, 'btnHlMenu', 'highlight')">▼</button>
+                    </div>
+
+                    <div class="color-picker-group">
+                        <button class="btn-color-main" onclick="ColorManager.applyLast('text')" title="Colore Testo">
+                            <span style="font-weight:bold">A</span>
+                            <div id="txBar" class="btn-color-bar tx-c10"></div>
+                        </button>
+                        <button id="btnTxMenu" class="btn-color-arrow" onclick="ColorManager.openColorMenu(event, 'btnTxMenu', 'text')">▼</button>
+                    </div>
+
+                    <div class="color-picker-group" style="border:none;">
+                        <button id="btnFormatTMenu" class="btn-color-main" title="Carattere e Dimensione" onclick="Editor.openTextFormatMenu(event, 'btnFormatTMenu')">
+                            <span style="font-weight:bold; font-family: serif; font-size: 1.1em;">T</span>
+                        </button>
+                        <button class="btn-color-arrow" onclick="Editor.openTextFormatMenu(event, 'btnFormatTMenu')">▼</button>
+                    </div>
+
+                    <div class="separator" style="height:38px;"></div>
+
+                    <button id="btnFormatH1" onclick="Editor.toggleHeader('h2')" title="Titolo Principale (H1)">
+                        <script>document.write(Icons.h1)</script>
+                    </button>
+                    <button id="btnFormatH2" onclick="Editor.toggleHeader('h3')" title="Titolo Secondario (H2)">
+                        <script>document.write(Icons.h2)</script>
+                    </button>
+
+                    <div class="color-picker-group" style="border:none;">
+                        <button id="btnListMenu" class="btn-color-main" title="Elenchi e Diario" onclick="Editor.openListMenu(event, 'btnListMenu')" style="padding:5px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="8" y1="6" x2="21" y2="6"></line>
+                                <line x1="8" y1="12" x2="21" y2="12"></line>
+                                <line x1="8" y1="18" x2="21" y2="18"></line>
+                                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                            </svg>
+                        </button>
+                        <button class="btn-color-arrow" onclick="Editor.openListMenu(event, 'btnListMenu')">▼</button>
+                    </div>
+
+                    <div class="separator" style="height:38px;"></div>
+
+                    <div class="color-picker-group" style="border:none;">
+                        <button id="btnInsertMenu" class="btn-color-main" title="Inserisci Elemento (Link, Img, ecc.)" onclick="Editor.openInsertMenu(event, 'btnInsertMenu')" style="padding:5px; flex-direction:row; gap:5px;">
+                            <span style="color:var(--accent-color);"><script>document.write(Icons.plus)</script></span>
+                            <span style="font-size:0.8rem; font-weight:bold;">Inserisci</span>
+                        </button>
+                        <button class="btn-color-arrow" onclick="Editor.openInsertMenu(event, 'btnInsertMenu')">▼</button>
+                    </div>
+
+                    <div class="color-picker-group" style="border:none;">
+                        <button id="btnWidgetsMenu" class="btn-color-main" title="Inserisci Modulo o Tabella" onclick="Editor.openWidgetsMenu(event, 'btnWidgetsMenu')" style="padding:5px; flex-direction:row; gap:5px;">
+                            <span style="color:var(--tx-c4);"><script>document.write(Icons.tableSimple)</script></span>
+                            <span style="font-size:0.8rem; font-weight:bold;">Blocchi</span>
+                        </button>
+                        <button class="btn-color-arrow" onclick="Editor.openWidgetsMenu(event, 'btnWidgetsMenu')">▼</button>
+                    </div>
+
+                    <input type="file" id="imgUpload" accept="image/*" style="display:none" onchange="Editor.handleImageUpload(this)">
+                    <input type="file" id="audioUpload" accept="audio/*" style="display:none" onchange="AudioManager.handleUpload(this)">
+
+                    <button id="btnContextEdit" onclick="Editor.editContextElement()"
+                        title="Opzioni Elemento Selezionato"
+                        style="color:var(--accent-color); font-weight:bold; display:none; margin-left:auto;">
+                        <span style="display:inline-flex; align-items:center; gap:5px;"><script>document.write(Icons.editTbl)</script> Modifica</span>
+                    </button>
+                </div>
+
+                <div style="display:flex; flex:1; overflow:hidden; position:relative;">
+                    
+                    <div class="editor-scroll-content" id="editorScrollContent">
+                        <div class="meta-bar">
+                            <span id="breadcrumb" style="display:flex; align-items:center; gap:5px;">Path</span>
+                            <div class="controls-group">
+                                <span id="noteLastUpdate"
+                                    style="font-size:0.75rem; color:var(--text-secondary); margin-right:10px;"></span>
+                                
+                                <div style="position: relative;">
+                                    <button id="btnNoteOptions" class="icon-btn" onclick="UI.openNoteOptionsMenu(event, 'btnNoteOptions')" title="Opzioni Nota">
+                                        <script>document.write(Icons.dotsVertical)</script>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <input type="text" id="noteTitle" name="dummy_title_field" class="title-input" placeholder="Titolo della nota" readonly autocomplete="off" spellcheck="false"
+                            oninput="UI.updateCurrentNote()">
+
+                        <div id="noteContent" class="editor-content monospace" contenteditable="false">
+                        </div>
+
+                        <div id="emptyNoteOverlay" class="empty-note-overlay" style="display: none;">
+                            <div class="empty-overlay-text">Inizia a scrivere oppure seleziona un template:</div>
+                            <div id="templateGrid" class="template-grid"></div>
+                        </div>
+
+                        <div id="subNotesFooter" class="subnotes-section hidden"></div>
+                    </div>
+
+                    <div id="minimapContainer" class="hidden">
+                        <div id="minimapContentWrapper">
+                            <div id="minimapContent"></div>
+                        </div>
+                        <div id="minimapViewport"></div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script Caricamento Base -->
+    <script src="js/state.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/color-manager.js"></script>
+    <script src="js/link-manager.js"></script>
+    <script src="js/export-manager.js"></script>
+    <script src="js/image-manager.js"></script>
+    <script src="js/audio-manager.js"></script>
+    <script src="js/widget-manager.js"></script>
+
+    <!-- Script UI -->
+    <script src="js/ui/ui-core.js"></script>
+    <script src="js/ui/ui-security.js"></script>
+    <script src="js/ui/ui-notifications.js"></script>
+    <script src="js/ui/ui-layout.js"></script>
+    <script src="js/ui/ui-menu.js"></script>
+
+    <!-- Script Editor Base -->
+    <script src="js/editor-core.js"></script>
+    <script src="js/editor-keyboard.js"></script>
+    <script src="js/editor-keyboard-mutations.js"></script>
+    <script src="js/editor-keyboard-navigation.js"></script>
+    <script src="js/editor-multicursor.js"></script>
+    <script src="js/editor-history.js"></script>
+    <script src="js/editor-format.js"></script>
+    <script src="js/editor-paste.js"></script> 
+    <script src="js/code-highlighter.js"></script>
+    <script src="js/journal-manager.js"></script>
+
+    <!-- Script Database Core & TableManager -->
+    <script src="js/TableManager/table-manager-core.js"></script>
+    <script src="js/TableManager/table-manager-ui.js"></script>
+    <script src="js/TableManager/table-manager-selection.js"></script>
+    <script src="js/TableManager/table-manager-drag.js"></script>
+    <script src="js/TableManager/table-manager-csv.js"></script>
+    <script src="js/logic-engine.js"></script> 
+    <script src="js/AdvancedTable/advanced-table-core.js"></script>
+    <script src="js/AdvancedTable/advanced-table-csv.js"></script>
+    <script src="js/AdvancedTable/advanced-table-data.js"></script>
+    <script src="js/AdvancedTable/advanced-table-render.js"></script>
+    <script src="js/AdvancedTable/advanced-table-cell.js"></script>
+    <script src="js/AdvancedTable/advanced-table-record.js"></script>
+    
+    <!-- Moduli Visualizzazione e Manipolazione Dati DB -->
+    <script src="js/automation-ui-builder.js"></script>
+    <script src="js/AdvancedTable/advanced-table-board.js"></script>
+    <script src="js/AdvancedTable/advanced-table-timeline.js"></script>
+    <script src="js/AdvancedTable/advanced-table-timeline-drag.js"></script>
+    <script src="js/AdvancedTable/advanced-table-timeline-render.js"></script>
+    <script src="js/AdvancedTable/advanced-table-calendar.js"></script>
+    <script src="js/AdvancedTable/advanced-table-actions.js"></script>
+    <script src="js/AdvancedTable/advanced-table-menus.js"></script>
+    <script src="js/AdvancedTable/advanced-table-column-menus.js"></script>
+    <script src="js/AdvancedTable/advanced-table-conditional-colors.js"></script>
+    <script src="js/AdvancedTable/advanced-table-select.js"></script>
+    <script src="js/AdvancedTable/advanced-table-formula.js"></script>
+    <script src="js/AdvancedTable/advanced-table-sort.js"></script>
+    <script src="js/AdvancedTable/advanced-table-filter.js"></script>
+    <script src="js/AdvancedTable/advanced-table-pivot.js"></script>
+    <script src="js/AdvancedTable/advanced-table-pivot-menus.js"></script>
+    <script src="js/AdvancedTable/advanced-table-automations-core.js"></script>
+    <script src="js/AdvancedTable/advanced-table-automations-ui.js"></script>
+    
+    <!-- Altri Plugin e Moduli -->
+    <script src="js/citation-manager.js"></script>
+    <script src="js/template-manager.js"></script>
+    <script src="js/button-manager-core.js"></script>
+    <script src="js/button-manager-ui.js"></script>
+
+    <!-- Nuovo Modulo Manuale in Sottocartella -->
+    <script src="js/manual/manual-core.js"></script>
+    <script src="js/manual/sec-intro.js"></script>
+    <script src="js/manual/sec-editor.js"></script>
+    <script src="js/manual/sec-links.js"></script>
+    <script src="js/manual/sec-tables.js"></script>
+    <script src="js/manual/sec-views.js"></script>
+    <script src="js/manual/sec-filters.js"></script>
+    <script src="js/manual/sec-pivot.js"></script>
+    <script src="js/manual/sec-formulas.js"></script>
+    <script src="js/manual/sec-automations.js"></script>
+    <script src="js/manual/sec-macros.js"></script>
+    <script src="js/manual/sec-system.js"></script>
+
+    <!-- Script Librerie Esterne per Dashboard (Caricate localmente) -->
+    <script src="lib/chart.umd.js"></script>
+    <script src="lib/chartjs-plugin-datalabels.min.js"></script>
+    <script src="js/AdvancedTable/advanced-table-charts.js"></script>
+
+    <!-- Script di Servizio -->
+    <script src="js/ui/ui-document-browser.js"></script>
+    <script src="js/ui/ui-notes.js"></script>
+    <script src="js/ui/ui-trash.js"></script>
+    <script src="js/ui/ui-minimap.js"></script>
+    <script src="js/ui/ui-modals.js"></script>
+    <script src="js/ui/ui-tree.js"></script>
+    
+    <script src="js/sidebar-manager.js"></script>
+    <script src="js/events-global.js"></script>
+    <script src="js/column-manager.js"></script>
+    <script src="js/package-manager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

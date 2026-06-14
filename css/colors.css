@@ -1,0 +1,162 @@
+/* --- CLASSI APPLICATE AL TESTO E SFONDO --- */
+.hl-c1 { background-color: var(--hl-c1); }
+.hl-c2 { background-color: var(--hl-c2); }
+.hl-c3 { background-color: var(--hl-c3); }
+.hl-c4 { background-color: var(--hl-c4); }
+.hl-c5 { background-color: var(--hl-c5); }
+.hl-c6 { background-color: var(--hl-c6); }
+.hl-c7 { background-color: var(--hl-c7); }
+.hl-c8 { background-color: var(--hl-c8); }
+.hl-c9 { background-color: var(--hl-c9); }
+.hl-c10 { background-color: var(--hl-c10); }
+
+.tx-c1 { color: var(--tx-c1); }
+.tx-c2 { color: var(--tx-c2); }
+.tx-c3 { color: var(--tx-c3); }
+.tx-c4 { color: var(--tx-c4); }
+.tx-c5 { color: var(--tx-c5); }
+.tx-c6 { color: var(--tx-c6); }
+.tx-c7 { color: var(--tx-c7); }
+.tx-c8 { color: var(--tx-c8); }
+.tx-c9 { color: var(--tx-c9); }
+.tx-c10 { color: var(--tx-c10); }
+
+/* Classi Helper per la Toolbar Bar */
+.bg-none { background-color: transparent !important; border: 1px solid #ccc; }
+.tx-auto { background-color: var(--text-primary) !important; }
+
+/* --- TOOLBAR COLOR PICKER --- */
+.color-picker-group {
+    display: inline-flex;
+    align-items: stretch; /* Modificato: i figli riempiono l'altezza */
+    border: 1px solid transparent;
+    border-radius: 4px;
+    margin-right: 4px;
+    position: relative; 
+}
+.color-picker-group:hover {
+    background-color: var(--item-hover);
+    border-color: var(--border-color);
+}
+
+.btn-color-main {
+    padding: 4px 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+}
+
+.btn-color-bar {
+    width: 16px;
+    height: 4px;
+    border-radius: 2px;
+}
+
+.btn-color-bar.hl-c1 { background-color: var(--hl-c1); border: 1px solid rgba(0,0,0,0.1); }
+.btn-color-bar.hl-c2 { background-color: var(--hl-c2); }
+.btn-color-bar.hl-c3 { background-color: var(--hl-c3); }
+.btn-color-bar.hl-c4 { background-color: var(--hl-c4); }
+.btn-color-bar.hl-c5 { background-color: var(--hl-c5); }
+.btn-color-bar.hl-c6 { background-color: var(--hl-c6); }
+.btn-color-bar.hl-c7 { background-color: var(--hl-c7); }
+.btn-color-bar.hl-c8 { background-color: var(--hl-c8); }
+.btn-color-bar.hl-c9 { background-color: var(--hl-c9); }
+.btn-color-bar.hl-c10 { background-color: var(--hl-c10); }
+
+.btn-color-bar.tx-c1 { background-color: var(--tx-c1); border: 1px solid rgba(0,0,0,0.1); }
+.btn-color-bar.tx-c2 { background-color: var(--tx-c2); }
+.btn-color-bar.tx-c3 { background-color: var(--tx-c3); }
+.btn-color-bar.tx-c4 { background-color: var(--tx-c4); }
+.btn-color-bar.tx-c5 { background-color: var(--tx-c5); }
+.btn-color-bar.tx-c6 { background-color: var(--tx-c6); }
+.btn-color-bar.tx-c7 { background-color: var(--tx-c7); }
+.btn-color-bar.tx-c8 { background-color: var(--tx-c8); }
+.btn-color-bar.tx-c9 { background-color: var(--tx-c9); }
+.btn-color-bar.tx-c10 { background-color: var(--tx-c10); }
+
+/* FIX: Freccia rimpicciolita per rubare meno spazio in Toolbar */
+.btn-color-arrow {
+    padding: 0;
+    width: 14px; /* Dimensione ridotta e fissa */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.6rem; /* Font più piccolo */
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-left: 1px solid transparent;
+}
+.color-picker-group:hover .btn-color-arrow {
+    border-left-color: var(--border-color);
+}
+
+.color-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    border-radius: 4px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 100;
+    width: 140px; 
+}
+
+.color-dropdown-title { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; }
+
+/* FIX: 5 Colonne x 2 Righe per 10 Colori */
+.color-palette-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+
+.color-option { width: 20px; height: 20px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.1); cursor: pointer; }
+.color-option:hover { transform: scale(1.1); border-color: var(--accent-color); }
+
+.btn-remove-color { width: 100%; text-align: left; background: transparent; border: 1px solid var(--border-color); font-size: 0.8rem; padding: 4px; margin-top: 5px; cursor: pointer; color: var(--text-primary); }
+.btn-remove-color:hover { background: var(--item-hover); }
+.hidden { display: none !important; }
+
+/* Aggiungi questo alla fine del file per gestire il "Non Colore" sbarrato */
+.color-swatch.bg-none {
+    position: relative;
+    background-color: transparent !important;
+    border: 1px solid var(--border-color);
+}
+
+.color-swatch.bg-none::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -2px;
+    width: calc(100% + 4px);
+    height: 2px;
+    background-color: rgba(255, 0, 0, 0.6);
+    transform: translateY(-50%) rotate(45deg);
+}
+
+.color-option.bg-none {
+    position: relative;
+    background-color: transparent !important;
+    border: 1px solid var(--border-color);
+}
+
+.color-option.bg-none::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -2px;
+    width: calc(100% + 4px);
+    height: 2px;
+    background-color: rgba(255, 0, 0, 0.6);
+    transform: translateY(-50%) rotate(45deg);
+}

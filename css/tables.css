@@ -1,0 +1,177 @@
+/* Table Styles - Isolato alle Tabelle Semplici */
+
+/* Isolamento Leggero Strutturale */
+.simple-table-wrapper {
+    position: relative;
+    margin: 15px 0;
+    width: 100%;
+    max-width: 100%;
+    outline: none;
+}
+
+.editor-content table:not(.adv-table) {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    border-radius: 4px;
+    overflow: visible;
+    position: relative;
+    margin: 0; /* Il margine lo gestisce il wrapper ora */
+}
+
+.editor-content th,
+.editor-content td {
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    position: relative;
+    min-width: 50px;
+    word-wrap: break-word;
+    vertical-align: top;
+    transition: background-color 0.1s;
+}
+
+/* FIX SELEZIONE CELLE: Uso box-shadow al posto di background-color per mantenere intatto il colore nativo della cella */
+.editor-content td.adv-cell-selected,
+.editor-content th.adv-cell-selected {
+    box-shadow: inset 0 0 0 1px var(--accent-color), inset 0 0 0 1000px rgba(37, 99, 235, 0.10) !important;
+    outline: none;
+}
+
+.editor-content th {
+    background-color: rgba(0, 0, 0, 0.03);
+    font-weight: 600;
+    text-align: left;
+}
+
+[data-theme="dark"] .editor-content th,
+[data-theme="notion-dark"] .editor-content th {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+/* FIX FOCUS CELLE: Stessa logica della selezione per preservare i colori */
+.editor-content td:focus,
+.editor-content th:focus {
+    box-shadow: inset 0 0 0 2px var(--accent-color) !important;
+    outline: none;
+    z-index: 2;
+}
+
+.text-left { text-align: left !important; }
+.text-center { text-align: center !important; }
+.text-right { text-align: right !important; }
+
+.editor-content table.table-striped tr:nth-child(even) td {
+    box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="dark"] .editor-content table.table-striped tr:nth-child(even) td,
+[data-theme="notion-dark"] .editor-content table.table-striped tr:nth-child(even) td {
+    box-shadow: inset 0 0 0 9999px rgba(255, 255, 255, 0.03);
+}
+
+/* --- TRIGGERS (Pulsanti attivazione menu) --- */
+.table-trigger-common {
+    position: absolute;
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 110; 
+    font-size: 14px;
+    transition: opacity 0.2s ease, transform 0.2s ease, background 0.1s;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.9);
+}
+
+.table-trigger-common.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
+}
+
+.table-trigger-common:hover {
+    background: var(--item-hover);
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.table-trigger-btn { width: 26px; height: 26px; background: var(--sidebar-bg); color: var(--text-secondary); }
+.table-row-trigger { width: 18px; height: 26px; line-height: 1; border-radius: 4px; }
+.table-col-trigger { width: 26px; height: 18px; line-height: 0.5; border-radius: 4px; }
+
+/* Maniglia di Trascinamento Tabella (Incrocio alto a sinistra) */
+.table-move-trigger {
+    width: 22px; 
+    height: 22px; 
+    border-radius: 4px; 
+    cursor: grab;
+}
+.table-move-trigger:active {
+    cursor: grabbing;
+}
+
+/* --- MENU STYLES --- */
+.notion-table-menu {
+    position: absolute;
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 115; 
+    min-width: 200px;
+    font-size: 0.85rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.notion-table-menu button {
+    background: transparent; 
+    border: none; 
+    text-align: left; 
+    padding: 6px 10px; 
+    border-radius: 5px;
+    color: var(--text-primary); 
+    cursor: pointer; 
+    width: 100%; 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    white-space: nowrap;
+    transition: background 0.1s;
+}
+.notion-table-menu button:hover { background: var(--item-hover); }
+.notion-table-menu .divider { height: 1px; background: var(--border-color); margin: 6px 0; }
+
+.color-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 4px 8px; }
+
+.color-swatch { width: 24px; height: 24px; border-radius: 4px; cursor: pointer; border: 1px solid rgba(0, 0, 0, 0.1); transition: transform 0.1s, border-color 0.1s; }
+.color-swatch:hover { transform: scale(1.15); border-color: var(--accent-color); z-index: 2; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+
+.editor-content th.hl-c1 { background-color: color-mix(in srgb, var(--hl-c1) 30%, transparent); }
+.editor-content th.hl-c2 { background-color: color-mix(in srgb, var(--hl-c2) 30%, transparent); }
+.editor-content th.hl-c3 { background-color: color-mix(in srgb, var(--hl-c3) 30%, transparent); }
+.editor-content th.hl-c4 { background-color: color-mix(in srgb, var(--hl-c4) 30%, transparent); }
+.editor-content th.hl-c5 { background-color: color-mix(in srgb, var(--hl-c5) 30%, transparent); }
+.editor-content th.hl-c6 { background-color: color-mix(in srgb, var(--hl-c6) 30%, transparent); }
+.editor-content th.hl-c7 { background-color: color-mix(in srgb, var(--hl-c7) 30%, transparent); }
+.editor-content th.hl-c8 { background-color: color-mix(in srgb, var(--hl-c8) 30%, transparent); }
+.editor-content th.hl-c9 { background-color: color-mix(in srgb, var(--hl-c9) 30%, transparent); }
+.editor-content th.hl-c10 { background-color: color-mix(in srgb, var(--hl-c10) 30%, transparent); }
+
+.std-col-resizer {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 5px; cursor: col-resize; z-index: 10;
+}
+.std-col-resizer:hover, .std-col-resizer.resizing {
+    background: var(--accent-color); opacity: 0.5;
+}

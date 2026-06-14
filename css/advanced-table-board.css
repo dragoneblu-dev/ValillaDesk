@@ -1,0 +1,129 @@
+/* =========================================================================
+   ADVANCED TABLE BOARD (KANBAN)
+   Visualizzazione a schede per RDBMS.
+   ========================================================================= */
+
+.adv-board-container { 
+    display: flex; 
+    overflow-x: auto; 
+    gap: 15px; 
+    padding: 10px 5px; 
+    align-items: flex-start; 
+    min-height: 400px; 
+    background: var(--bg-color); 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+}
+
+.adv-board-col-wrapper { 
+    flex: 1; 
+    min-width: 280px; 
+    max-width: 380px; 
+    background: var(--sidebar-bg); 
+    border: 1px solid var(--border-color); 
+    border-radius: 8px; 
+    display: flex; 
+    flex-direction: column; 
+    max-height: 80vh; 
+}
+
+.adv-board-col-header { 
+    padding: 10px 15px; 
+    border-bottom: 1px solid var(--border-color); 
+    display: flex; 
+    align-items: center; 
+    gap: 8px; 
+    flex-shrink: 0; 
+}
+
+.adv-kanban-col { 
+    overflow-y: auto; 
+    flex: 1; 
+    padding: 10px !important; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 10px; 
+    min-height: 100px; 
+}
+
+.adv-board-card { 
+    flex-shrink: 0; 
+    min-height: min-content; 
+    background: var(--bg-color); 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+    padding: 12px !important; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
+    transition: transform 0.1s; 
+}
+
+.adv-board-card-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: flex-start; 
+    margin-bottom: 8px; 
+}
+
+.adv-board-card-title { 
+    font-weight: bold; 
+    font-size: 0.9rem; 
+    color: var(--text-primary); 
+    flex: 1; 
+    word-break: break-word; 
+}
+
+.adv-board-card-props { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 4px; 
+}
+
+.adv-board-prop-row { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: flex-start; 
+    gap: 10px; 
+    margin-bottom: 2px; 
+}
+
+.adv-board-prop-col { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 2px; 
+    margin-bottom: 2px; 
+}
+
+.adv-board-prop-label { 
+    color: var(--text-secondary); 
+    font-size: 0.6rem; 
+    text-transform: uppercase; 
+    opacity: 0.8; 
+    white-space: nowrap; 
+    margin-top: 2px; 
+}
+
+.adv-board-prop-val-row { 
+    font-size: 0.8rem; 
+    text-align: right; 
+    word-break: break-word; 
+    display: flex; 
+    justify-content: flex-end; 
+    flex-wrap: wrap; 
+    gap: 4px; 
+    width: 100%; 
+}
+
+.adv-board-prop-val-col { 
+    font-size: 0.8rem; 
+    display: flex; 
+    flex-wrap: wrap; 
+    gap: 4px; 
+    width: 100%; 
+}
+
+.adv-board-card .adv-select-container { justify-content: flex-end; }
+.adv-board-card .adv-cell-date input, 
+.adv-board-card .adv-cell-number input, 
+.adv-board-card .adv-cell-text { text-align: right; }
+.adv-board-card .adv-cell-date input::-webkit-datetime-edit, 
+.adv-board-card .adv-cell-date input::-webkit-datetime-edit-fields-wrapper { display: flex; justify-content: flex-end; padding: 0; margin: 0; }

@@ -1,0 +1,70 @@
+/* =========================================================================
+   ADVANCED TABLE TIMELINE
+   Visualizzazione a Diagramma di Gantt.
+   ========================================================================= */
+
+.adv-timeline-toolbar { 
+    display: flex; 
+    justify-content: flex-end; 
+    padding: 5px 0; 
+}
+
+.adv-timeline-wrapper { 
+    background: var(--bg-color); 
+    border: 1px solid var(--border-color); 
+    border-radius: 6px; 
+    overflow: hidden; 
+    position: relative; 
+    width: 100%; 
+    box-sizing: border-box; 
+}
+
+.adv-timeline-header-sticky { 
+    position: sticky; 
+    top: 0; 
+    z-index: 5; 
+    background: var(--sidebar-bg); 
+    height: 60px; 
+}
+
+.adv-timeline-month-block { 
+    display: inline-block; 
+    padding: 4px 10px; 
+    font-size: 0.7rem; 
+    font-weight: bold; 
+    color: var(--text-secondary); 
+    border-right: 1px solid var(--border-color); 
+    border-bottom: 1px solid var(--border-color); 
+    text-align: left; 
+    box-sizing: border-box; 
+    position: relative; 
+    background: var(--sidebar-bg); 
+    z-index: 2; 
+}
+
+.adv-timeline-day-block { 
+    display: flex; 
+    flex-direction: column; 
+    justify-content: center; 
+    align-items: stretch; 
+    text-align: center; 
+    padding: 2px 0; 
+    font-size: 0.75rem; 
+    color: var(--text-primary); 
+    border-right: 1px solid var(--border-color); 
+    border-bottom: 1px solid var(--border-color); 
+    box-sizing: border-box; 
+    overflow: hidden; 
+}
+
+.adv-timeline-bar { 
+    height: 26px; 
+    border-radius: 4px; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05); 
+    display: flex; 
+    align-items: center; 
+    padding: 0 8px; 
+    box-sizing: border-box; 
+    overflow: hidden; 
+    transition: opacity 0.1s; 
+}

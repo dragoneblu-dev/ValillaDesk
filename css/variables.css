@@ -1,0 +1,238 @@
+:root {
+    /* Layout Colors (Tema Default - Crema) */
+    --bg-color: #f3f4f6;
+    --sidebar-bg: #f9f8f3;
+    --editor-bg: #f9f8f3;
+    --text-primary: #000000;
+    --text-secondary: #566172;
+    --accent-color: #4f8b00; /*2563eb;*/
+    --accent-hover: #1d4ed8;
+    --border-color: #e5e7eb;
+    --item-hover: #edf3d0; /*f9fafb;*/
+    --item-active: #f4fbcf; /*eff6ff;*/
+    --marked-bg: #fffbeb;
+    --marked-border: #fbbf24;
+    --danger-color: #ef4444;
+    --sidebar-width: 320px;
+    --font-editor: "Menlo", "Consolas", "Monaco", "Courier New", monospace;
+    --reading-font-size: 16px;
+    --code-bg: #353535;
+    --code-text: #ffffff;
+    
+    /* Variabili specifiche per il Tooltip Custom */
+    --tooltip-bg: #f6f3e6;
+    --tooltip-text: #27251f;
+
+    /* --- PALETTE 10 COLORI (Light Mode - Più Brillanti) --- */
+    --hl-c1: #eeeeee; /* Grigio Default */
+    --hl-c2: #d1d1d1; /* Grigio Scuro */
+    --hl-c3: #e1ad93; /* Marrone / Terracotta */
+    --hl-c4: #fad0aa; /* Arancione */
+    --hl-c5: #ffff83; /* Giallo */
+    --hl-c6: #b1e0c9; /* Verde */
+    --hl-c7: #a8d5fa; /* Blu */
+    --hl-c8: #d1b4e6; /* Viola */
+    --hl-c9: #f4c2d7; /* Rosa */
+    --hl-c10: #ffb1af; /* Rosso */
+
+    /* Colori Testo per le Pillole (Light Mode) */
+    --hl-tc-c1: #000000;
+    --hl-tc-c2: #000000;
+    --hl-tc-c3: #000000;
+    --hl-tc-c4: #000000;
+    --hl-tc-c5: #000000;
+    --hl-tc-c6: #000000;
+    --hl-tc-c7: #000000;
+    --hl-tc-c8: #000000;
+    --hl-tc-c9: #000000;
+    --hl-tc-c10: #000000;
+
+    --tx-c1: #32302c; /* Text Default */
+    --tx-c2: #878787;
+    --tx-c3: #b15a35;
+    --tx-c4: #ff8600;
+    --tx-c5: #c0c000;
+    --tx-c6: #00ae49;
+    --tx-c7: #0f8ddf;
+    --tx-c8: #853bc7;
+    --tx-c9: #c52779;
+    --tx-c10: #d00000;
+
+    /* --- PALETTE COLORI PER I GRAFICI (CHART.JS) --- */
+    --chart-pastel-1: #FFB3BA; --chart-pastel-2: #FFDFBA; --chart-pastel-3: #FFFFBA; --chart-pastel-4: #BAFFC9; --chart-pastel-5: #BAE1FF; --chart-pastel-6: #E6B3FF;
+    --chart-vibrant-1: #FF0055; --chart-vibrant-2: #00FF99; --chart-vibrant-3: #FF9900; --chart-vibrant-4: #00CCFF; --chart-vibrant-5: #9900FF; --chart-vibrant-6: #FFCC00;
+    --chart-ocean-1: #0369A1; --chart-ocean-2: #0EA5E9; --chart-ocean-3: #38BDF8; --chart-ocean-4: #0D9488; --chart-ocean-5: #2DD4BF; --chart-ocean-6: #14B8A6;
+    --chart-sunset-1: #B91C1C; --chart-sunset-2: #E11D48; --chart-sunset-3: #F43F5E; --chart-sunset-4: #EA580C; --chart-sunset-5: #F97316; --chart-sunset-6: #FB923C;
+}
+
+[data-theme="white"] {
+    --bg-color: #f9fafb;
+    --sidebar-bg: #ffffff;
+    --editor-bg: #ffffff;
+    --text-primary: #111111;
+    --text-secondary: #6b7280;
+    --accent-color: #2563eb;
+    --border-color: #e5e7eb;
+    --item-hover: #f3f4f6;
+    --item-active: #eff6ff;
+    --code-bg: #f4f4f5;
+    --code-text: #1f2937;
+    
+    --tooltip-bg: #f6f3e6;
+    --tooltip-text: #000000;
+}
+
+[data-theme="dark"] {
+    --bg-color: #212732;
+    --sidebar-bg: #272c34;
+    --editor-bg: #272c34;
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    --accent-color: #82b9fb;
+    --accent-hover: #3b82f6;
+    --border-color: #374151;
+    --item-hover: #374151;
+    --item-active: #283e5c;
+    --marked-bg: #283e5c;
+    --marked-border: #ffd900;
+    --danger-color: #f87171;
+    --code-bg: #1e1e1e;
+    --code-text: #d4d4d4;
+    
+    --tooltip-bg: #2a3856; /* 111827 */
+    --tooltip-text: #f9fafb;
+
+    /* --- PALETTE 10 COLORI (Dark Mode) --- */
+    --hl-c1: #101010; /* Grigio Default */
+    --hl-c2: #5a5a5a; /* Grigio Scuro */
+    --hl-c3: #603b2c; /* Marrone */
+    --hl-c4: #995216; /* Arancione */
+    --hl-c5: #a09800; /* Giallo senape */
+    --hl-c6: #2c6c3c; /* Verde */
+    --hl-c7: #264da1; /* Blu */
+    --hl-c8: #4f2d78; /* Viola */
+    --hl-c9: #812d61; /* Rosa */
+    --hl-c10: #7b2525; /* Rosso */
+
+    /* Colori Testo per le Pillole calcolati per Contrasto (Dark Mode) */
+    --hl-tc-c1: #ffffff;
+    --hl-tc-c2: #ffffff;
+    --hl-tc-c3: #ffffff;
+    --hl-tc-c4: #ffffff;
+    --hl-tc-c5: #000000; /* Nero su sfondo Giallo per perfetta leggibilità */
+    --hl-tc-c6: #ffffff;
+    --hl-tc-c7: #ffffff;
+    --hl-tc-c8: #ffffff;
+    --hl-tc-c9: #ffffff;
+    --hl-tc-c10: #ffffff;
+
+    --tx-c1: #ffffff;
+    --tx-c2: #9ca3af;
+    --tx-c3: #d3b4a4;
+    --tx-c4: #ffa344;
+    --tx-c5: #ffff10;
+    --tx-c6: #4dff9c;
+    --tx-c7: #52a9ff;
+    --tx-c8: #d797ff;
+    --tx-c9: #ff8ad8;
+    --tx-c10: #ff5144;
+}
+
+[data-theme="notion-dark"] {
+    --bg-color: #191919;
+    --sidebar-bg: #202020;
+    --editor-bg: #191919;
+    --text-primary: rgba(255, 255, 255, 0.81);
+    --text-secondary: rgba(255, 255, 255, 0.44);
+    --accent-color: #2383E2;
+    --accent-hover: #1462B3;
+    --border-color: rgba(255, 255, 255, 0.09);
+    --item-hover: rgba(255, 255, 255, 0.055);
+    --item-active: rgba(255, 255, 255, 0.11);
+    --marked-bg: rgba(35, 131, 226, 0.15);
+    --marked-border: #2383E2;
+    --danger-color: #EB5757;
+    --code-bg: #1e1e1e;
+    --code-text: #d4d4d4;
+    
+    --tooltip-bg: #2f2f2f;
+    --tooltip-text: #ffffff;
+
+    /* Palette tenui stile Notion Dark */
+    --hl-c1: #101010; /* Grigio Default */
+    --hl-c2: #5a5a5a; /* Grigio Scuro */
+    --hl-c3: #603b2c; /* Marrone */
+    --hl-c4: #995216; /* Arancione */
+    --hl-c5: #a8a800; /* Giallo */
+    --hl-c6: #2c6c3c; /* Verde */
+    --hl-c7: #264da1; /* Blu */
+    --hl-c8: #4f2d78; /* Viola */
+    --hl-c9: #812d61; /* Rosa */
+    --hl-c10: #7b2525; /* Rosso */
+
+    /* Colori Testo per le Pillole calcolati per Contrasto (Dark Mode) */
+    --hl-tc-c1: #ffffff;
+    --hl-tc-c2: #ffffff;
+    --hl-tc-c3: #ffffff;
+    --hl-tc-c4: #ffffff;
+    --hl-tc-c5: #000000; /* Nero su sfondo Giallo */
+    --hl-tc-c6: #ffffff;
+    --hl-tc-c7: #ffffff;
+    --hl-tc-c8: #ffffff;
+    --hl-tc-c9: #ffffff;
+    --hl-tc-c10: #ffffff;
+
+    --tx-c1: #ffffff;
+    --tx-c2: #9ca3af;
+    --tx-c3: #d3b4a4;
+    --tx-c4: #ffa344;
+    --tx-c5: #ffff10;
+    --tx-c6: #4dff9c;
+    --tx-c7: #52a9ff;
+    --tx-c8: #d797ff;
+    --tx-c9: #ff8ad8;
+    --tx-c10: #ff5144;
+}
+
+[data-theme="pastel"] {
+    --bg-color: #F8FAF9;
+    --sidebar-bg: #EDF2F0;
+    --editor-bg: #F8FAF9;
+    --text-primary: #1f2530;
+    --text-secondary: #566172;
+    --accent-color: #38B2AC;
+    --accent-hover: #319795;
+    --border-color: #E2E8F0;
+    --item-hover: #E2E8F0;
+    --item-active: #B2F5EA;
+    --marked-bg: #FEFCBF;
+    --marked-border: #F6E05E;
+    --danger-color: #FC8181;
+    --code-bg: #e2e8f0;
+    --code-text: #1a202c;
+    
+    --tooltip-bg: #319795;
+    --tooltip-text: #F8FAF9;
+
+    --hl-c1: #eeeeee; /* Grigio Default */
+    --hl-c2: #d1d1d1; /* Grigio Scuro */
+    --hl-c3: #e1ad93; /* Marrone / Terracotta */
+    --hl-c4: #fad0aa; /* Arancione */
+    --hl-c5: #fdf2b3; /* Giallo */
+    --hl-c6: #b1e0c9; /* Verde */
+    --hl-c7: #a8d5fa; /* Blu */
+    --hl-c8: #d1b4e6; /* Viola */
+    --hl-c9: #f4c2d7; /* Rosa */
+    --hl-c10: #ffb1af; /* Rosso */
+
+    --tx-c1: #32302c; /* Text Default */
+    --tx-c2: #878787;
+    --tx-c3: #b15a35;
+    --tx-c4: #ff8600;
+    --tx-c5: #c09d00;
+    --tx-c6: #00a856;
+    --tx-c7: #0f8ddf;
+    --tx-c8: #853bc7;
+    --tx-c9: #c52779;
+    --tx-c10: #ce1711;
+}

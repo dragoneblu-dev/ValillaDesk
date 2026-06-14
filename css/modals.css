@@ -1,0 +1,593 @@
+/* Overlay generale e sfocatura (Glassmorphism) */
+.link-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(3px);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Animazione di comparsa Zoom/Fade */
+@keyframes modalFadeZoom {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-animate {
+    animation: modalFadeZoom 0.2s ease-out forwards;
+}
+
+/* Finestra Modale Classica */
+.link-modal {
+    background: var(--sidebar-bg);
+    width: 500px;
+    max-height: 80vh;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    position: relative;
+}
+
+/* Header */
+.link-modal-header {
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.link-modal-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+/* Input Moderni (Stile Material) */
+.modern-input {
+    width: 100%;
+    border: none !important;
+    border-bottom: 2px solid var(--border-color) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    padding: 8px 4px !important;
+    color: var(--text-primary);
+    transition: all 0.3s ease !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.modern-input:focus {
+    border-bottom-color: var(--accent-color) !important;
+    background: rgba(37, 99, 235, 0.05) !important;
+}
+
+.modern-input option,
+.modern-input optgroup {
+    background: var(--bg-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.modern-input optgroup {
+    font-weight: bold;
+    font-style: normal;
+    color: var(--accent-color) !important;
+}
+
+.link-modal-search {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-color);
+    color: var(--text-primary);
+}
+
+/* Lista Risultati */
+.link-modal-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 5px;
+}
+
+.link-modal-item {
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid transparent;
+    color: var(--text-primary);
+}
+
+.link-modal-item:hover {
+    background: var(--item-hover);
+}
+
+.link-modal-item .link-icon {
+    margin-right: 8px;
+    opacity: 0.7;
+}
+
+.link-modal-item .link-text {
+    flex: 1;
+}
+
+.link-modal-item .link-path {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 10px;
+}
+
+/* Indentazione Gerarchica */
+.link-indent-0 {
+    padding-left: 10px;
+}
+
+.link-indent-1 {
+    padding-left: 25px;
+}
+
+.link-indent-2 {
+    padding-left: 40px;
+}
+
+.link-indent-3 {
+    padding-left: 55px;
+}
+
+.link-header {
+    color: var(--accent-color);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+.close-modal-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+}
+
+.close-modal-btn:hover {
+    color: var(--danger-color);
+}
+
+.selection-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.selection-card:hover {
+    background: var(--item-hover);
+    border-color: var(--accent-color);
+}
+
+.selection-icon {
+    font-size: 1.5rem;
+}
+
+.editor-content a.file-link {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: var(--text-primary);
+    padding: 1px 5px;
+    border-radius: 4px;
+    text-decoration: none;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    font-size: 0.9em;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: baseline;
+    margin: 0 1px;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.editor-content a.file-link:hover {
+    background-color: rgba(255, 193, 7, 0.2);
+    border-color: #ffc107;
+}
+
+.formula-editor-area {
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 10px;
+    min-height: 100px;
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+}
+
+.formula-editor-area:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.f-string {
+    color: #ce9178;
+}
+
+.f-number {
+    color: #b5cea8;
+}
+
+.f-var {
+    color: #569cd6;
+    font-weight: bold;
+}
+
+.f-func {
+    color: #c586c0;
+    font-weight: bold;
+}
+
+.f-prop {
+    color: #9cdcfe;
+}
+
+.adv-intellisense-item {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 4px;
+}
+
+.adv-intellisense-item:hover,
+.adv-intellisense-item.selected {
+    background-color: rgba(37, 99, 235, 0.15);
+    border-left: 3px solid var(--accent-color);
+}
+
+.adv-custom-tooltip {
+    position: fixed;
+    background: var(--tooltip-bg);
+    color: var(--tooltip-text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    max-width: 600px;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.inline-note-wrapper {
+    display: inline;
+    white-space: nowrap;
+}
+
+.inline-note-marker {
+    cursor: pointer;
+    color: var(--accent-color);
+    padding: 0 2px;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: text-bottom;
+    opacity: 0.8;
+}
+
+.inline-note-marker:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.inline-note-marker svg {
+    margin-bottom: -1px;
+}
+
+/* -------------------------------------------------------------
+   PANNELLO LATERALE (DRAWER)
+   ------------------------------------------------------------- */
+.adv-drawer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 650px;
+    max-width: 90vw;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+    box-shadow: 5px 0 15px rgba(0, 0, 0, 0.1);
+}
+
+.adv-drawer.open {
+    transform: translateX(0);
+}
+
+/* --- NUOVO: SIDE SWITCHER (DOCK A DESTRA) --- */
+.adv-drawer.dock-right {
+    left: auto;
+    right: 0;
+    border-right: none;
+    border-left: 1px solid var(--border-color);
+    transform: translateX(100%);
+    box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+}
+
+.adv-drawer.dock-right.open {
+    transform: translateX(0);
+}
+
+/* --- NUOVO: MODALITÀ X-RAY (GHOST MODE) --- */
+.adv-drawer.ghost-mode {
+    background: transparent;
+    border: none;
+    box-shadow: none !important;
+    pointer-events: none; /* Permette il click through verso l'editor */
+}
+
+/* Manteniamo l'header parzialmente interattivo per poter togliere il ghost mode */
+.adv-drawer.ghost-mode .adv-drawer-header {
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    pointer-events: auto; /* L'header resta cliccabile */
+}
+
+/* Svuotiamo brutalmente il corpo per non generare "zuppa di testo" */
+.adv-drawer.ghost-mode .adv-drawer-body,
+.adv-drawer.ghost-mode .adv-drawer-footer {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+}
+
+.adv-drawer-header {
+    height: 50px;
+    padding: 0 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-color);
+    flex-shrink: 0;
+}
+
+.adv-drawer-title {
+    font-weight: bold;
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    flex: 1; /* Permette lo spacing corretto dei tasti */
+}
+
+.adv-drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.adv-drawer-footer {
+    padding: 15px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    background: var(--bg-color);
+    flex-shrink: 0;
+}
+
+/* =========================================
+   MENU CONTESTUALI AVANZATI E AUTOCOMPLETI
+   ========================================= */
+.adv-context-menu {
+    position: absolute; 
+    background: var(--sidebar-bg); 
+    border: 1px solid var(--border-color);
+    border-radius: 8px; 
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
+    padding: 6px;
+    min-width: 220px; 
+    z-index: 9999; 
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px; 
+    color: var(--text-primary);
+}
+
+.adv-menu-item {
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between;
+    padding: 6px 10px; 
+    border-radius: 5px; 
+    cursor: pointer; 
+    user-select: none; 
+    position: relative; 
+    margin-bottom: 2px;
+}
+
+.adv-menu-item:hover { 
+    background: var(--item-hover); 
+}
+
+.adv-menu-item.danger { 
+    color: var(--danger-color); 
+}
+
+.adv-menu-item.danger:hover { 
+    background: rgba(239, 68, 68, 0.1); 
+}
+
+.adv-menu-item.disabled { 
+    opacity: 0.4; 
+    pointer-events: none; 
+}
+
+.adv-menu-icon { 
+    margin-right: 10px; 
+    opacity: 0.8; 
+    display: inline-flex; 
+    width: 16px; 
+    justify-content: center; 
+    align-items: center; 
+}
+
+.adv-menu-label { 
+    flex: 1; 
+    white-space: nowrap; 
+}
+
+.adv-menu-arrow { 
+    margin-left: 10px; 
+    opacity: 0.5; 
+    font-weight: bold; 
+}
+
+.adv-menu-divider { 
+    height: 1px; 
+    background: var(--border-color); 
+    margin: 6px 0; 
+}
+
+.adv-submenu {
+    position: absolute; 
+    top: -6px; 
+    left: 100%; 
+    display: none; 
+    background: var(--sidebar-bg);
+    border: 1px solid var(--border-color); 
+    border-radius: 8px; 
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    padding: 6px; 
+    min-width: 200px; 
+    z-index: 10000;
+}
+
+.adv-menu-item.has-submenu:hover > .adv-submenu { 
+    display: block; 
+}
+
+.adv-menu-input { 
+    width: 100%; 
+    box-sizing: border-box; 
+    background: var(--bg-color); 
+    border: 1px solid var(--border-color); 
+    color: var(--text-primary); 
+    padding: 6px 8px; 
+    border-radius: 4px; 
+    font-size: 12px; 
+    margin-bottom: 4px; 
+    outline: none; 
+}
+
+.adv-menu-input:focus { 
+    border-color: var(--accent-color); 
+}
+
+.adv-menu-btn { 
+    width: 100%; 
+    background: var(--item-active); 
+    border: 1px solid transparent; 
+    color: var(--accent-color); 
+    padding: 6px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    font-weight: bold; 
+}
+
+.adv-menu-btn:hover { 
+    background: rgba(37, 99, 235, 0.15); 
+}
+
+.adv-filter-autocomplete {
+    position: absolute; 
+    background: var(--sidebar-bg); 
+    border: 1px solid var(--border-color);
+    border-radius: 4px; 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+    z-index: 10001;
+    max-height: 150px; 
+    overflow-y: auto; 
+    width: 100%; 
+    font-size: 12px; 
+    display: none;
+}
+
+.adv-filter-autocomplete-item {
+    padding: 6px 8px; 
+    cursor: pointer; 
+    color: var(--text-primary);
+    white-space: nowrap; 
+    overflow: hidden; 
+    text-overflow: ellipsis;
+}
+
+.adv-filter-autocomplete-item:hover {
+    background: var(--item-hover); 
+    color: var(--accent-color);
+}
+
+@media (max-width: 768px) {
+    .adv-drawer {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .link-modal {
+        width: 95% !important;
+        max-width: 95% !important;
+        margin: 0 auto;
+    }
+
+    .selection-card {
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .link-modal-title {
+        font-size: 1rem;
+    }
+}

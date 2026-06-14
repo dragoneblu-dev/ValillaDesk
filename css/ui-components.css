@@ -1,0 +1,109 @@
+/* =========================================================================
+   UI COMPONENTS (Moduli Standardizzati dell'Interfaccia)
+   Libreria CSS dedicata per evitare stili inline nel Javascript
+   ========================================================================= */
+
+/* --- GENERAL UTILITIES --- */
+.ui-text-center { text-align: center; }
+.ui-text-right { text-align: right; }
+.ui-flex-center { display: flex; align-items: center; justify-content: center; }
+.ui-flex-between { display: flex; justify-content: space-between; align-items: center; }
+.ui-gap-small { gap: 5px; }
+.ui-gap-medium { gap: 10px; }
+.ui-gap-large { gap: 15px; }
+
+/* --- BANNERS & NOTIFICATIONS --- */
+.ui-info-banner {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 15px;
+    background: rgba(0, 0, 0, 0.02);
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.ui-security-banner {
+    background: rgba(37, 99, 235, 0.05);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.ui-danger-box {
+    padding: 15px;
+    border: 1px dashed var(--danger-color);
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.05);
+    text-align: center;
+}
+
+/* --- EMPTY STATES --- */
+.ui-empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* --- LIST CONTAINERS (Cestino, Ricerche, File) --- */
+.ui-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+
+.ui-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.ui-list-item-content {
+    flex: 1;
+    overflow: hidden;
+}
+
+.ui-list-item-title {
+    font-weight: bold;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ui-list-item-subtitle {
+    font-size: 0.75rem;
+    color: var(--danger-color);
+}
+
+.ui-list-item-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+/* --- FORMS & LABELS --- */
+.ui-label-primary {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--text-primary);
+    margin-bottom: 5px;
+    display: block;
+}
+
+.ui-input-full {
+    width: 100%;
+}
