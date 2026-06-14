@@ -5,6 +5,8 @@
  * serializzazione JSON pulita per eliminare i falsi positivi di conflitto generati dal File System.
  * REFACTOR LOGGING: Ripristinata integralmente la logica di concorrenza LWW (Last-Write-Wins) originale,
  * con l'aggiunta di log di debug specifici nel caso in cui un conflitto reale venga intercettato.
+ * FEAT ONBOARDING: La creazione di un nuovo Workspace genera automaticamente una prima nota di benvenuto
+ * e attiva l'impostazione "Edit continuo" in modo predefinito.
  */
 
 const DB_NAME = 'ProNotesDB';
@@ -750,6 +752,16 @@ const Store = {
 
             if (typeof Editor !== 'undefined') Editor.clearHistory();
             AppState.notes = []; AppState.databases = {}; AppState.homeCitations = []; AppState.templates = []; AppState.currentNoteId = null; AppState.searchFilter = "";
+
+            // Abilita la modalità Edit Continuo in modo predefinito per il nuovo Workspace
+            AppState.continuousEditMode = true;
+            localStorage.setItem('pronotes_continuous', 'true');
+            const ceIcon = document.getElementById('continuousEditIcon');
+            if (ceIcon) {
+                ceIcon.innerHTML = typeof Icons !== 'undefined' ? Icons.checkSquare : '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>';
+                ceIcon.style.color = 'var(--accent-color)';
+            }
+
             const searchInput = document.getElementById('searchInput');
             if (searchInput) searchInput.value = "";
             if (typeof AdvancedTable !== 'undefined') AdvancedTable.ensureSystemPropertiesDB();
@@ -767,6 +779,30 @@ const Store = {
 
             Store.saveLocalBackup();
             Store._finalizeUIAfterLoad();
+
+            // Generazione automatica della prima nota di benvenuto
+            setTimeout(() => {
+                const newNoteId = Store.generateId();
+                const now = new Date().toISOString();
+
+                AppState.notes.push({
+                    id: newNoteId,
+                    parentId: null,
+                    title: "Prima Nota",
+                    content: "<p>Benvenuto nel tuo nuovo Workspace. Inizia a scrivere i tuoi appunti qui...</p><p><br></p>",
+                    isMarked: false,
+                    expanded: true,
+                    createdAt: now,
+                    updatedAt: now
+                });
+
+                if (typeof UI !== 'undefined') {
+                    if (typeof UI.renderTree !== 'undefined') UI.renderTree();
+                    if (typeof UI.selectNote !== 'undefined') UI.selectNote(newNoteId);
+                }
+
+                Store.triggerAutoSave(true);
+            }, 100);
 
         } catch (err) {
             if (err.name !== 'AbortError') alert("Errore creazione Workspace: " + err.message);
