@@ -1,11 +1,9 @@
 /**
  * events-global.js
  * Mappatura e intercettazione degli eventi globali dell'applicazione.
- * FIX: Supporto al Middle-Click (Pulsante 3 del mouse) per l'apertura rapida dei Link e delle Note.
- * FIX DRAG CITAZIONI: Permette il trascinamento delle citazioni tramite l'apposita maniglia.
- * FIX SELEZIONE: Isolamento del Select-All (Ctrl+A / Cmd+A) all'interno dei Blocchi di Codice.
- * FIX DRAG-SCROLL: Inserito "Drag Assist Engine" con calcolo matematico a 60FPS per forzare 
- * lo scorrimento infinito della pagina (verso l'alto e verso il basso) bypassando il blocco nativo del browser.
+ * FIX MACRO DRAG: Esclusa la barra dei pulsanti dallo Scudo Drag (Drag Shield)
+ * per evitare la corruzione dell'evento HTML5 nativo dovuto al pointer-events: none.
+ * FIX DRAG-SCROLL: Inserito "Drag Assist Engine" con calcolo matematico a 60FPS.
  */
 
 const EventsGlobal = {
@@ -115,17 +113,22 @@ const EventsGlobal = {
                     shield = document.createElement('style');
                     shield.id = 'drag-shield-style';
                     
-                    // Protegge il calcolo delle coordinate oscurando gli iframe e l'interno dei Widget complessi.
-                    // Lascia deliberatamente attivi i TD, TH e le Colonne per permettere il rilascio di immagini/testo al loro interno!
+                    console.log(`[MACRO-DRAG] 3. Attivazione Scudo Drag. Tipo: ${draggedType}`);
+                    
+                    // FIX MACRO DRAG: Esclusione .widget-type-buttonbar.
+                    // Evita l'annullamento del drag nativo nei widget con maniglie posizionate nel body.
                     shield.innerHTML = `
                         iframe, object, embed { pointer-events: none !important; }
-                        .adv-widget-shell .widget-body { pointer-events: none !important; }
+                        .adv-widget-shell:not(.widget-type-buttonbar) .widget-body { pointer-events: none !important; }
                         .simple-table-wrapper td, .simple-table-wrapper th, .widget-type-columns .col-box { pointer-events: auto !important; }
                     `;
                     document.head.appendChild(shield);
                 }
             } else {
-                if (shield) shield.remove();
+                if (shield) {
+                    shield.remove();
+                    console.log(`[MACRO-DRAG] Rimozione Scudo Drag.`);
+                }
             }
         };
 
@@ -413,6 +416,8 @@ const EventsGlobal = {
                     AppState.draggedBlockType = 'simple-table';
                 }
                 
+                console.log(`[MACRO-DRAG] 2. events-global dragstart rileva widget: ${widgetWrapper.id} di tipo ${AppState.draggedBlockType}`);
+
                 // DRAG ASSIST: Attiviamo lo scudo e il motore per i widget complessi
                 toggleDragShield(true, AppState.draggedBlockType);
                 return;
@@ -606,46 +611,25 @@ const EventsGlobal = {
 
             hideDropIndicator();
             
-            // DRAG ASSIST: Arresto Immediato del motore prima dei calcoli di rilascio
-            stopDragAssist();
-
-            let target = e.target;
-            if (target.nodeType === 3) target = target.parentNode;
-            if (!target || !target.closest) return;
-
-            // CITAZIONI: Rilascio bloccato
-            if (target.closest('.block-citation')) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Azione bloccata: Non puoi aggiungere elementi all'interno di una citazione.", "warning");
-                return;
-            }
-
-            if (!AppState.draggedBlockId && AppState.isEditMode) {
-                if (typeof WidgetManager !== 'undefined') {
-                    if (WidgetManager.isProtectedBlock(target) && !WidgetManager.isInsideEditableWidgetArea(target)) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (typeof UI !== 'undefined' && UI.showToast) {
-                            UI.showToast("Azione bloccata: Non puoi rilasciare testo libero sopra l'infrastruttura di un Widget.", "warning");
-                        }
-                        return;
-                    }
-                }
-            }
-
-            if (target.closest('.adv-cell-text') && AppState.isEditMode && !AppState.draggedBlockId) {
-                e.preventDefault();
-                const text = e.dataTransfer.getData('text/plain');
-                document.execCommand('insertText', false, text);
-                return;
-            }
-
             if (AppState.draggedBlockId && AppState.isEditMode) {
                 e.preventDefault(); 
                 e.stopPropagation();
 
                 const blockId = AppState.draggedBlockId;
+                console.log(`[MACRO-DRAG] 4. events-global drop innescato. Tentativo di spostamento per: ${blockId}`);
+
+                // DRAG ASSIST: Arresto Immediato del motore prima dei calcoli di rilascio
+                stopDragAssist();
+
+                let target = e.target;
+                if (target.nodeType === 3) target = target.parentNode;
+                if (!target || !target.closest) return;
+
+                // CITAZIONI: Rilascio bloccato
+                if (target.closest('.block-citation')) {
+                    if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Azione bloccata: Non puoi aggiungere elementi all'interno di una citazione.", "warning");
+                    return;
+                }
 
                 let sourceBlock = null;
 
@@ -656,6 +640,7 @@ const EventsGlobal = {
                 }
 
                 if (!sourceBlock) {
+                    console.log(`[MACRO-DRAG] 5. ERRORE: sourceBlock non trovato nel DOM per ID: ${blockId}`);
                     AppState.draggedBlockId = null;
                     AppState.draggedBlockType = null;
                     return;
@@ -748,6 +733,40 @@ const EventsGlobal = {
                     if (typeof Store !== 'undefined') Store.triggerAutoSave();
                 }, 10);
 
+                return;
+            }
+
+            // Arresto Immediato del motore anche per rilasci a vuoto o di testo
+            stopDragAssist();
+
+            let targetNode = e.target;
+            if (targetNode.nodeType === 3) targetNode = targetNode.parentNode;
+            if (!targetNode || !targetNode.closest) return;
+
+            if (targetNode.closest('.block-citation')) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof UI !== 'undefined' && UI.showToast) UI.showToast("Azione bloccata: Non puoi aggiungere elementi all'interno di una citazione.", "warning");
+                return;
+            }
+
+            if (!AppState.draggedBlockId && AppState.isEditMode) {
+                if (typeof WidgetManager !== 'undefined') {
+                    if (WidgetManager.isProtectedBlock(targetNode) && !WidgetManager.isInsideEditableWidgetArea(targetNode)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (typeof UI !== 'undefined' && UI.showToast) {
+                            UI.showToast("Azione bloccata: Non puoi rilasciare testo libero sopra l'infrastruttura di un Widget.", "warning");
+                        }
+                        return;
+                    }
+                }
+            }
+
+            if (targetNode.closest('.adv-cell-text') && AppState.isEditMode && !AppState.draggedBlockId) {
+                e.preventDefault();
+                const text = e.dataTransfer.getData('text/plain');
+                document.execCommand('insertText', false, text);
                 return;
             }
 

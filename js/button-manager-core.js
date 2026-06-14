@@ -3,6 +3,7 @@
  * Nucleo del modulo Barre di Pulsanti Programmabili.
  * REFACTOR: La funzione execute si avvale ora del motore centralizzato 'LogicEngine.executeMacroBlocks'
  * eliminando decine di righe di codice duplicato e uniformando il comportamento tra Widget Macro e Colonne Macro.
+ * FIX DRAG & DROP: Estetica originale ripristinata. Inseriti log di tracciamento per il debug dello spostamento.
  */
 
 const ButtonManager = {
@@ -224,6 +225,7 @@ const ButtonManager = {
     },
 
     handleDragStart: (e, id) => {
+        console.log(`[MACRO-DRAG] 1. handleDragStart innescato per la barra: ${id}`);
         e.dataTransfer.effectAllowed = 'move';
         AppState.draggedBlockId = id;
         AppState.draggedBlockType = 'buttonbar';
@@ -254,7 +256,6 @@ const ButtonManager = {
 
         const state = ButtonManager.getState(id);
         
-        // Se il guscio è vuoto (minificato), rigonfiamolo ricostruendolo.
         let bodyContainer = wrapper.querySelector('.widget-body');
         if (!bodyContainer) {
             wrapper.innerHTML = `<div class="widget-body"></div>`;
@@ -275,15 +276,10 @@ const ButtonManager = {
         if (typeof WidgetManager !== 'undefined') {
             WidgetManager.updateShellUI(id, {
                 hideHeader: true,
-                onDragStart: (e) => {
-                    e.dataTransfer.effectAllowed = 'move';
-                    AppState.draggedBlockId = id;
-                    AppState.draggedBlockType = 'buttonbar';
-                },
-                onDragEnd: () => { AppState.draggedBlockId = null; AppState.draggedBlockType = null; }
             });
         }
 
+        // Estetica originale con position: relative per il contenitore e absolute per la maniglia
         let html = `<div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; ${isEdit ? 'padding:10px; border:1px dashed var(--border-color); border-radius:6px; background:rgba(0,0,0,0.01); position:relative;' : 'padding:5px 0; border:none; background:transparent;'}">`;
 
         if (isEdit) {
