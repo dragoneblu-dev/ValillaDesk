@@ -8,8 +8,8 @@
 ![AI Assisted](https://img.shields.io/badge/AI_Assisted_Development-8A2BE2?style=for-the-badge&logo=openai&logoColor=white)
 
 ![VanillaDesk Banner](vanillaDesk.png)
-![Diario e Timeline](images/vanillaDesk2.png)
-![Code & Kamban](images/vanillaDesk3.png)
+![Diario e Timeline](vanillaDesk2.png)
+![Code & Kamban](vanillaDesk3.png)
 
 
 VanillaDesk is not just a simple notepad. It’s a hybrid workspace that combines an **advanced WYSIWYG word processor** with a powerful **in-memory Relational Database Engine (RDBMS)**.
