@@ -4,6 +4,10 @@
  * FIX HYDRATION: Re-idratazione immediata post-salvataggio.
  * FIX FOCUS INPUT: Aggiunta esenzione in handleSmartClickEscape per preservare il focus delle search bar.
  * FIX CARET ENGINE: Introdotto _getTextAndCaret globale per la mappatura perfetta cursore/testo.
+ * FIX GARBAGE COLLECTOR: Ora scansiona rigorosamente anche i Template (inclusi i widget nidificati)
+ * per impedire l'eliminazione fisica di immagini e audio validi dal disco.
+ * FIX ZWS POLLUTION: Implementato Garbage Collector in tempo reale in sanitizeContent per estirpare 
+ * gli Zero-Width Space (\u200B) orfani dal DOM, pur proteggendo quelli necessari all'infrastruttura Widget.
  */
 
 const Editor = {
@@ -323,13 +327,38 @@ const Editor = {
             while ((match = audRegex.exec(htmlString)) !== null) activeAudioIds.add(match[1]);
         };
 
+        // 1. Scansiona Editor Visibile e Note
         const editor = document.getElementById('noteContent');
         if (editor) extractIds(editor.innerHTML);
         AppState.notes.forEach(note => extractIds(note.content));
         
+        // 2. Scansiona Stack di Undo/Redo
         if (Editor.undoStack) Editor.undoStack.forEach(extractIds);
         if (Editor.redoStack) Editor.redoStack.forEach(extractIds);
 
+        // 3. Scansiona Template (Anche i Widget nidificati internamente!)
+        if (AppState.templates) {
+            AppState.templates.forEach(tpl => {
+                extractIds(tpl.content);
+                if (tpl.widgets) {
+                    Object.values(tpl.widgets).forEach(state => {
+                        if (state.rows) {
+                            state.rows.forEach(row => {
+                                if (row.cells) {
+                                    Object.values(row.cells).forEach(cellVal => {
+                                        if (typeof cellVal === 'string' && (cellVal.includes('data-image-ref') || cellVal.includes('data-audio-ref'))) {
+                                            extractIds(cellVal); 
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        // 4. Scansiona il contenuto nativo dei Database in RAM
         if (AppState.databases) {
             Object.values(AppState.databases).forEach(state => {
                 if (state.rows) {
@@ -346,6 +375,7 @@ const Editor = {
             });
         }
 
+        // 5. Purga DB Orfani
         if (AppState.databases) {
             Object.keys(AppState.databases).forEach(id => {
                 if (id === 'SYS_PROPERTIES_DB') return; 
@@ -353,6 +383,7 @@ const Editor = {
             });
         }
         
+        // 6. Purga Immagini Orfane in RAM
         if (Editor.imageCache) {
             Object.keys(Editor.imageCache).forEach(id => {
                 if (!activeImageIds.has(id)) {
@@ -362,6 +393,7 @@ const Editor = {
             });
         }
         
+        // 7. Purga Audio Orfani in RAM
         if (Editor.audioCache) {
             Object.keys(Editor.audioCache).forEach(id => {
                 if (!activeAudioIds.has(id)) {
@@ -523,12 +555,39 @@ const Editor = {
             }
         });
 
+        // -------------------------------------------------------------
+        // FIX ZWS POLLUTION: Garbage Collector in tempo reale per rimuovere
+        // gli Zero-Width Space (\u200B) non più necessari dopo l'eliminazione dei Link.
+        // -------------------------------------------------------------
         const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
         let node;
-        while (node = walker.nextNode()) {
-            if (node.nodeValue.includes('\u200B') && node.nodeValue !== '\u200B') node.nodeValue = node.nodeValue.replace(/\u200B/g, '');
+        const nodesToRemove = [];
+        
+        while ((node = walker.nextNode())) {
+            if (node.nodeValue.includes('\u200B')) {
+                // Se il nodo contiene testo nomale mischiato allo ZWS (es. typing sporco), pulisce solo lo ZWS
+                if (node.nodeValue !== '\u200B') {
+                    node.nodeValue = node.nodeValue.replace(/\u200B/g, '');
+                } else {
+                    // Se il nodo è ESATTAMENTE un \u200B, controlla se è essenziale per la struttura.
+                    const prev = node.previousSibling;
+                    const next = node.nextSibling;
+                    const parent = node.parentNode;
+                    
+                    const isNeeded = (prev && (prev.tagName === 'A' || (prev.classList && prev.classList.contains('adv-inline-shell')))) ||
+                                     (next && (next.tagName === 'A' || (next.classList && next.classList.contains('adv-inline-shell')))) ||
+                                     (parent && (parent.classList && (parent.classList.contains('checklist-text') || parent.classList.contains('snippet-text'))));
+                    
+                    if (!isNeeded) {
+                        nodesToRemove.push(node);
+                    }
+                }
+            }
             if (node.nodeValue.includes('\u00A0\u00A0')) node.nodeValue = node.nodeValue.replace(/\u00A0{2,}/g, ' ');
         }
+        
+        // Purgiamo i nodi orfani
+        nodesToRemove.forEach(n => n.remove());
 
         editor.normalize();
         Editor._normalizeEmptyBlocks(editor);
@@ -641,6 +700,7 @@ const Editor = {
             TableManager.editCurrentTable(el);
         } else if (el.tagName === 'UL' || el.tagName === 'OL') {
             if (typeof UI !== 'undefined' && UI.Menu) {
+                // Simulate click on the list toolbar button
                 const btn = document.getElementById('btnListMenu');
                 if (btn) Editor.openListMenu(null, 'btnListMenu');
             }
@@ -650,7 +710,9 @@ const Editor = {
     toggleAdvancedToolbar: (enable) => {
         const tb = document.getElementById('editorToolbar');
         if (!tb) return;
-        const buttons = tb.querySelectorAll('button:not([title="Annulla Ultima Modifica (Ctrl+Z)"]):not([title="Ripeti (Ctrl+Y / Ctrl+Shift+Z)"]):not([title="Maiuscolo/Minuscolo"])');
+        
+        // I pulsanti Undo/Redo vengono gestiti in esclusiva da Editor.updateUndoRedoUI() in history
+        const buttons = tb.querySelectorAll('button:not([title*="Annulla Ultima"]):not([title*="Ripeti ("]):not([title="Maiuscolo/Minuscolo"])');
         const dropdowns = tb.querySelectorAll('.color-picker-group');
 
         buttons.forEach(btn => btn.disabled = !enable);
