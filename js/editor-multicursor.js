@@ -3,6 +3,10 @@
  * Modulo dedicato alla gestione dei cursori multipli (Stile VS Code Ctrl+D).
  * Estende l'oggetto Editor.
  * FIX: Risolto warning "addRange: range isn't in document" controllando la presenza del nodo.
+ * FIX SELEZIONE MANCANTE: L'algoritmo non usa più il fallibile TreeWalker in modo relativo, 
+ * ma mappa in modo assoluto i nodi di testo, garantendo l'aggancio infallibile alle parole successive.
+ * FIX CANCELLAZIONE TOTALE (Backspace): Se il nodo Master viene distrutto nativamente dal browser,
+ * l'Observer ripulisce il DOM da tutte le tracce clonate ripristinando il normale flusso di editing senza crash.
  */
 
 Object.assign(Editor, {
@@ -14,19 +18,26 @@ Object.assign(Editor, {
         Editor._multiCursorObserver = new MutationObserver((mutations) => {
             if (!Editor.multiSelectActive) return;
             
-            for(let mut of mutations) {
-                if (mut.type === 'characterData' || mut.type === 'childList') {
-                    const master = document.querySelector('.adv-multi-cursor.master');
-                    if (!master) continue;
-                    
-                    if (master.contains(mut.target)) {
-                        const newText = master.innerText;
-                        document.querySelectorAll('.adv-multi-cursor:not(.master)').forEach(el => {
-                            if(el.innerText !== newText) el.innerText = newText;
-                        });
-                    }
-                }
+            const master = document.querySelector('.adv-multi-cursor.master');
+            
+            // FIX CANCELLAZIONE TOTALE: Se l'utente preme Backspace fino a svuotare il nodo, 
+            // il browser lo rimuove fisicamente dal DOM. Lo intercettiamo e puliamo la sporcizia.
+            if (!master) {
+                document.querySelectorAll('.adv-multi-cursor').forEach(el => {
+                    const parent = el.parentNode;
+                    while(el.firstChild) parent.insertBefore(el.firstChild, el);
+                    parent.removeChild(el);
+                });
+                Editor.multiSelectActive = false;
+                Editor.multiSelectTerm = '';
+                return;
             }
+            
+            // Sincronizzazione visiva Live per i cloni
+            const newText = master.textContent;
+            document.querySelectorAll('.adv-multi-cursor:not(.master)').forEach(el => {
+                if(el.textContent !== newText) el.textContent = newText;
+            });
         });
         
         Editor._multiCursorObserver.observe(editorEl, { childList: true, characterData: true, subtree: true });
@@ -76,18 +87,31 @@ Object.assign(Editor, {
         }
 
         const term = Editor.multiSelectTerm;
-        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
         
+        // FIX MANCATA SELEZIONE: Mappatura lineare assoluta dei Text Nodes per superare 
+        // i limiti di avanzamento del TreeWalker in presenza di tag frazionati.
+        const textNodes = [];
+        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
+        while(walker.nextNode()) {
+            textNodes.push(walker.currentNode);
+        }
+        
+        const allMarks = document.querySelectorAll('.adv-multi-cursor');
+        const lastMark = allMarks[allMarks.length - 1];
+        
+        let startIndex = 0;
+        if (lastMark) {
+            const lastMarkTextNode = lastMark.firstChild;
+            startIndex = textNodes.indexOf(lastMarkTextNode);
+            if (startIndex !== -1) startIndex += 1; 
+            else startIndex = 0; 
+        }
+
         let foundNode = null;
         let foundOffset = -1;
         
-        const allMarks = document.querySelectorAll('.adv-multi-cursor');
-        const lastElement = allMarks[allMarks.length - 1];
-        
-        walker.currentNode = lastElement || editor;
-        
-        while (walker.nextNode()) {
-            const txt = walker.currentNode;
+        for (let i = startIndex; i < textNodes.length; i++) {
+            const txt = textNodes[i];
             const parent = txt.parentNode;
             
             const isProtected = WidgetManager.isProtectedBlock(parent);
@@ -104,10 +128,10 @@ Object.assign(Editor, {
             }
         }
 
+        // Se non trovo nulla in avanti, ricomincio dall'inizio (Wrap-around)
         if (!foundNode) {
-            walker.currentNode = editor;
-            while (walker.nextNode()) {
-                const txt = walker.currentNode;
+            for (let i = 0; i < startIndex; i++) {
+                const txt = textNodes[i];
                 const parent = txt.parentNode;
                 
                 const isProtected = WidgetManager.isProtectedBlock(parent);
@@ -119,13 +143,13 @@ Object.assign(Editor, {
                 const idx = txt.nodeValue.indexOf(term);
                 if (idx !== -1) {
                     let alreadySelected = false;
-                    for(let i=0; i<sel.rangeCount; i++) {
-                        const r = sel.getRangeAt(i);
-                        if(r.startContainer === txt && r.startOffset === idx) {
+                    for (let j = 0; j < sel.rangeCount; j++) {
+                        const r = sel.getRangeAt(j);
+                        if (r.startContainer === txt && r.startOffset === idx) {
                             alreadySelected = true; break;
                         }
                     }
-                    if(!alreadySelected) {
+                    if (!alreadySelected) {
                         foundNode = txt;
                         foundOffset = idx;
                         break;

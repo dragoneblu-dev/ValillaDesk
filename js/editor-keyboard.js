@@ -8,7 +8,8 @@
  * all'interno degli span generati dal syntax highlighter, risolvendo i salti cursore.
  * FEAT SMART HOME: Aggiunto gestore handleHomeKey per i blocchi di codice.
  * FEAT LINK RAPIDI: Intercettazione della digitazione "[[" per evocare in modo nativo LinkManager.openInternalModal().
- * FIX LINK RAPIDI: Cancellazione bilaterale della parentesi di chiusura "]" generata dall'auto-close.
+ * FIX LINK RAPIDI ZWS: Eliminata l'iniezione duplicata di Zero-Width Space. La sanità del cursore viene ora delegata
+ * completamente a LinkManager al momento del rilascio, mantenendo pulito il DOM.
  */
 
 Object.assign(Editor, {
@@ -122,13 +123,13 @@ Object.assign(Editor, {
                             cleanRange.setEnd(node, deleteEndOffset);
                             cleanRange.deleteContents();
                             
-                            // Applica i classici Zero-Width Space richiesti dal LinkManager per la sanità del range
-                            const zws = document.createTextNode('\u200B');
-                            range.insertNode(zws);
+                            // FIX ZWS POLLUTION: Abbiamo rimosso l'inserimento forzato dello 
+                            // Zero-Width Space in questa fase. La pulizia del DOM e l'inserimento
+                            // del cursore vengono gestite da LinkManager al termine dell'operazione.
                             
                             sel.removeAllRanges();
                             const focusRange = document.createRange();
-                            focusRange.setStartAfter(zws);
+                            focusRange.setStart(node, range.startOffset - 1);
                             focusRange.collapse(true);
                             sel.addRange(focusRange);
                             

@@ -5,8 +5,8 @@
  * serializzazione JSON pulita per eliminare i falsi positivi di conflitto generati dal File System.
  * REFACTOR LOGGING: Ripristinata integralmente la logica di concorrenza LWW (Last-Write-Wins) originale,
  * con l'aggiunta di log di debug specifici nel caso in cui un conflitto reale venga intercettato.
- * FEAT ONBOARDING: La creazione di un nuovo Workspace genera automaticamente una prima nota di benvenuto
- * e attiva l'impostazione "Edit continuo" in modo predefinito.
+ * FIX GARBAGE COLLECTOR: Ora scansiona rigorosamente anche i Template (inclusi i widget nidificati)
+ * per impedire l'eliminazione fisica di immagini e audio validi dal disco.
  */
 
 const DB_NAME = 'ProNotesDB';
@@ -227,8 +227,32 @@ const Store = {
                 while ((match = audRegex.exec(htmlString)) !== null) activeAudioIds.add(match[1]);
             };
 
+            // 1. Scansiona Note Attive
             AppState.notes.forEach(note => { if (!note.deletedAt) extractIds(note.content); });
 
+            // 2. Scansiona i Template Salvati
+            if (AppState.templates) {
+                AppState.templates.forEach(tpl => {
+                    extractIds(tpl.content);
+                    if (tpl.widgets) {
+                        Object.values(tpl.widgets).forEach(state => {
+                            if (state.rows) {
+                                state.rows.forEach(row => {
+                                    if (row.cells) {
+                                        Object.values(row.cells).forEach(cellVal => {
+                                            if (typeof cellVal === 'string' && (cellVal.includes('data-image-ref') || cellVal.includes('data-audio-ref'))) {
+                                                extractIds(cellVal); 
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+
+            // 3. Scansiona i Database Attivi
             if (AppState.databases) {
                 Object.values(AppState.databases).forEach(state => {
                     if (state.rows) {
@@ -236,7 +260,7 @@ const Store = {
                             if (row.cells) {
                                 Object.values(row.cells).forEach(cellVal => {
                                     if (typeof cellVal === 'string' && (cellVal.includes('data-image-ref') || cellVal.includes('data-audio-ref'))) {
-                                    extractIds(cellVal); 
+                                        extractIds(cellVal); 
                                     }
                                 });
                             }

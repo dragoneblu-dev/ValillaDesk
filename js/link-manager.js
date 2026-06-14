@@ -2,8 +2,9 @@
  * LinkManager.js
  * Gestisce i Tipi di Link (Esterni, Interni, File Locali testuali) e l'inserimento Video YouTube.
  * FIX WORKSPACE: Aggiunto l'Auto-Loading per i file testuali referenziati con Path Relativo.
- * FIX CURSORE: Inserimento programmatico di "Zero Width Spaces" prima e dopo i link
- * per evitare che il cursore si fonda con il link quando si digita al suo confine.
+ * FIX CURSORE E POLLUZIONE DOM: L'inserimento di un link inietta ora un SOLO Zero-Width Space 
+ * esclusivamente DOPO il link, per permettere all'utente di digitare senza rimanere incastrato, 
+ * evitando la duplicazione di \u200B e la fastidiosa permanenza in caso di cancellazione del testo.
  * FEAT UX: Aggiunta indicazione visiva della shortcut "[[" nel pannello di selezione link.
  */
 
@@ -618,15 +619,13 @@ const LinkManager = {
         const range = sel.getRangeAt(0);
         range.deleteContents();
         
-        const zwsBefore = document.createTextNode('\u200B');
-        const zwsAfter = document.createTextNode('\u200B');
-        
-        range.insertNode(zwsAfter);
         range.insertNode(node);
-        range.insertNode(zwsBefore);
+        
+        const zwsAfter = document.createTextNode('\u200B');
+        node.parentNode.insertBefore(zwsAfter, node.nextSibling);
         
         const newRange = document.createRange();
-        newRange.setStartAfter(node);
+        newRange.setStartAfter(zwsAfter); // Cursor goes strictly after the ZWS to continue typing normally
         newRange.collapse(true);
         sel.removeAllRanges();
         sel.addRange(newRange);
