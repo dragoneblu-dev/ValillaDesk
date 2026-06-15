@@ -2,6 +2,7 @@
  * AdvancedTableColumnMenus.js
  * Menu Contestuali per la singola Colonna: Cambio Tipo, Rinomina, Sposta, Elimina.
  * FIX UX: Aggiunta opzione esplicita "Configura Relazione" con popup di alert per la prevenzione della perdita dati.
+ * FEAT VISIBILITÀ: Aggiunto comando rapido per nascondere/mostrare il campo (Gestito dinamicamente anche dal Drawer).
  */
 
 const AdvancedTableColumnMenus = {
@@ -197,7 +198,6 @@ const AdvancedTableColumnMenus = {
         AdvancedTable.closeDropdowns(true);
     },
 
-    // FIX UX: Gestore sicuro per l'apertura del pannello Configura Relazione
     reconfigureRelation: (tableId, colId) => {
         const realTableId = AdvancedTable._resolveSourceId(tableId);
         const state = AdvancedTable.getState(realTableId);
@@ -205,7 +205,6 @@ const AdvancedTableColumnMenus = {
 
         if (!col) return;
 
-        // Controlla se la colonna ha già dei dati popolati
         let hasData = state.rows.some(r => {
             const val = r.cells[colId];
             return Array.isArray(val) ? val.length > 0 : !!val;
@@ -219,6 +218,57 @@ const AdvancedTableColumnMenus = {
         }
         
         AdvancedTable.openRelationConfig(realTableId, colId);
+    },
+
+    // ----------------------------------------------------------------------
+    // FEAT: Nascondi/Mostra Campo
+    // ----------------------------------------------------------------------
+    toggleVisibility: (tableId, colId) => {
+        let state = AdvancedTable.getState(tableId);
+
+        let viewId = 'table';
+        if (state.viewType === 'board') viewId = 'board_' + state.boardGroupBy;
+        else if (state.viewType === 'calendar') viewId = 'calendar_' + state.calendarDateCol;
+        else if (state.viewType === 'timeline') viewId = 'timeline_' + state.timelineDateCol;
+
+        if (!state.viewConfig) state.viewConfig = {};
+        if (!state.viewConfig[viewId]) {
+            state.viewConfig[viewId] = { hiddenCols: state.columns.filter(c => c.hidden).map(c => c.id) };
+        }
+
+        const hiddenList = state.viewConfig[viewId].hiddenCols;
+        const idx = hiddenList.indexOf(colId);
+
+        if (idx > -1) {
+            // Mostra (Rimuove dalla lista dei nascosti)
+            hiddenList.splice(idx, 1);
+        } else {
+            // Nascondi (Aggiunge alla lista)
+            // Previene di nascondere l'ultima colonna rimasta!
+            if (state.columns.length - hiddenList.length <= 1) {
+                alert("Impossibile nascondere l'unica colonna visibile rimasta.");
+                return;
+            }
+            hiddenList.push(colId);
+        }
+
+        // Pulisce l'attributo obsoleto .hidden se presente
+        state.columns.forEach(c => delete c.hidden);
+
+        AdvancedTable.setState(tableId, state);
+
+        // Se l'utente ha fatto click dal Drawer laterale, lo ricarichiamo senza chiuderlo
+        const drawer = document.getElementById('advGlobalDrawer');
+        if (drawer && drawer.classList.contains('open') && AdvancedTable.activeRecordId) {
+            AdvancedTable.openRecordView(tableId, AdvancedTable.activeRecordId);
+        } else {
+            // Se eravamo sulla griglia classica, chiudiamo il menu e aggiorniamo il widget
+            const realTableId = AdvancedTable._resolveSourceId(tableId);
+            AdvancedTable.updateDependentViews(realTableId);
+            UI.Menu.closeAll(true);
+        }
+        
+        Store.triggerAutoSave();
     },
 
     openAddColumnMenu: (e, tableId) => {
@@ -246,7 +296,6 @@ const AdvancedTableColumnMenus = {
             { icon: Icons.time, label: 'Ultima Modifica', onClick: () => AdvancedTable.addColumn(tableId, 'last_edited_time') }
         ];
 
-        // Usa e.currentTarget.id se disponibile (es. bottone nel Drawer), altrimenti fallback per le tabelle
         const anchorId = e && e.currentTarget && e.currentTarget.id ? e.currentTarget.id : `adv-th-add-${tableId}`;
         UI.Menu.buildContextMenu(anchorId, menuItems);
     },
@@ -258,10 +307,25 @@ const AdvancedTableColumnMenus = {
         const realTableId = AdvancedTable._resolveSourceId(tableId);
         const state = AdvancedTable.getState(realTableId);
         
+        // Uso stateForView per recuperare i parametri di visualizzazione della vista corrente
+        const stateForView = AdvancedTable.getState(tableId);
+        
         const colIndex = state.columns.findIndex(c => c.id === colId);
         const col = state.columns[colIndex];
 
         const safeName = col.name.replace(/"/g, '&quot;');
+
+        let viewId = 'table';
+        if (stateForView.viewType === 'board') viewId = 'board_' + stateForView.boardGroupBy;
+        else if (stateForView.viewType === 'calendar') viewId = 'calendar_' + stateForView.calendarDateCol;
+        else if (stateForView.viewType === 'timeline') viewId = 'timeline_' + stateForView.timelineDateCol;
+
+        const hiddenList = stateForView.viewConfig && stateForView.viewConfig[viewId] ? stateForView.viewConfig[viewId].hiddenCols : [];
+        const isHidden = col.hidden || hiddenList.includes(colId);
+        const visibleColsCount = stateForView.columns.length - hiddenList.length;
+        const canHide = isHidden || visibleColsCount > 1;
+
+        const chk = ' <span style="color:var(--accent-color); font-weight:bold; float:right;">✓</span>';
 
         const menuItems =[
             {
@@ -278,10 +342,14 @@ const AdvancedTableColumnMenus = {
                 label: col.comment ? 'Modifica Commento...' : 'Aggiungi Commento...',
                 onClick: () => AdvancedTableColumnMenus.openColumnCommentModal(realTableId, colId)
             },
+            {
+                icon: Icons.eyeOff,
+                label: 'Campo Nascosto' + (isHidden ? chk : ''),
+                disabled: !canHide,
+                onClick: () => AdvancedTableColumnMenus.toggleVisibility(tableId, colId)
+            },
             { type: 'divider' }
         ];
-
-        const chk = ' <span style="color:var(--accent-color); font-weight:bold; float:right;">✓</span>';
 
         if (col.type === 'date' || col.type === 'datetime') {
             menuItems.push({ icon: Icons.time, label: 'Data di Fine' + (col.hasEndDate ? chk : ''), onClick: () => AdvancedTableColumnMenus.toggleEndDate(realTableId, colId) });
@@ -289,7 +357,6 @@ const AdvancedTableColumnMenus = {
         }
 
         if (col.type === 'relation') {
-            // FIX UX: Aggiunta opzione esplicita e sicura per Riconfigurare la Relazione
             menuItems.push({ icon: Icons.relation, label: 'Configura Relazione', onClick: () => AdvancedTableColumnMenus.reconfigureRelation(realTableId, colId) });
             menuItems.push({ icon: Icons.checkSquare, label: 'Limita a 1 solo record' + (col.singleRecord ? chk : ''), onClick: () => AdvancedTableColumnMenus.toggleRelationSingle(realTableId, colId) });
             menuItems.push({ icon: Icons.relation, label: 'Mostra in DB destinazione' + (col.showBacklink ? chk : ''), onClick: () => AdvancedTableColumnMenus.toggleRelationBacklink(realTableId, colId) });
