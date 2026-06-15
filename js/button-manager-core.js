@@ -225,7 +225,7 @@ const ButtonManager = {
     },
 
     handleDragStart: (e, id) => {
-        console.log(`[MACRO-DRAG] 1. handleDragStart innescato per la barra: ${id}`);
+        //console.log(`[MACRO-DRAG] 1. handleDragStart innescato per la barra: ${id}`);
         e.dataTransfer.effectAllowed = 'move';
         AppState.draggedBlockId = id;
         AppState.draggedBlockType = 'buttonbar';

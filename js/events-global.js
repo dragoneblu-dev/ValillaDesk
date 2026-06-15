@@ -3,7 +3,9 @@
  * Mappatura e intercettazione degli eventi globali dell'applicazione.
  * FIX MACRO DRAG: Esclusa la barra dei pulsanti dallo Scudo Drag (Drag Shield)
  * per evitare la corruzione dell'evento HTML5 nativo dovuto al pointer-events: none.
- * FIX DRAG-SCROLL: Inserito "Drag Assist Engine" con calcolo matematico a 60FPS.
+ * FIX CTRL+A: L'isolamento della selezione (Select-All) copre ora anche i campi testuali del Diario
+ * e gli snippet, prevenendo selezioni globali indesiderate.
+ * FIX DRAG-SCROLL: Inserito "Drag Assist Engine" con calcolo matematico.
  */
 
 const EventsGlobal = {
@@ -113,7 +115,6 @@ const EventsGlobal = {
                     shield = document.createElement('style');
                     shield.id = 'drag-shield-style';
                     
-                    console.log(`[MACRO-DRAG] 3. Attivazione Scudo Drag. Tipo: ${draggedType}`);
                     
                     // FIX MACRO DRAG: Esclusione .widget-type-buttonbar.
                     // Evita l'annullamento del drag nativo nei widget con maniglie posizionate nel body.
@@ -127,7 +128,6 @@ const EventsGlobal = {
             } else {
                 if (shield) {
                     shield.remove();
-                    console.log(`[MACRO-DRAG] Rimozione Scudo Drag.`);
                 }
             }
         };
@@ -302,6 +302,27 @@ const EventsGlobal = {
             const isCtrlOrCmd = e.ctrlKey || e.metaKey;
             const key = e.key.toLowerCase();
             
+            // ISOLAMENTO SELECT-ALL (Ctrl+A)
+            if (isCtrlOrCmd && key === 'a' && AppState.isEditMode) {
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    let node = sel.anchorNode;
+                    if (node && node.nodeType === 3) node = node.parentNode;
+                    
+                    // Identifica se siamo in una sotto-area editabile protetta (Codice, Diario, Cella DB o Tabella Semplice, Snippet)
+                    const isolatedArea = node ? node.closest('.code-content, .journal-content, .snippet-text, .adv-cell-text, td[contenteditable="true"], th[contenteditable="true"]') : null;
+                    
+                    if (isolatedArea) {
+                        e.preventDefault();
+                        const range = document.createRange();
+                        range.selectNodeContents(isolatedArea);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        return;
+                    }
+                }
+            }
+
             if (isCtrlOrCmd && AppState.isEditMode) {
                 if (e.shiftKey && key === 'b') {
                     e.preventDefault();
@@ -416,7 +437,6 @@ const EventsGlobal = {
                     AppState.draggedBlockType = 'simple-table';
                 }
                 
-                console.log(`[MACRO-DRAG] 2. events-global dragstart rileva widget: ${widgetWrapper.id} di tipo ${AppState.draggedBlockType}`);
 
                 // DRAG ASSIST: Attiviamo lo scudo e il motore per i widget complessi
                 toggleDragShield(true, AppState.draggedBlockType);
@@ -503,8 +523,7 @@ const EventsGlobal = {
                 let protectedParent = dropNode.nodeType === 3 ? dropNode.parentNode.closest(WidgetManager.blockSelector + ', .simple-table-wrapper') : dropNode.closest(WidgetManager.blockSelector + ', .simple-table-wrapper');
                 let targetElement = null;
 
-                // DRAG & DROP: Se stiamo trascinando un'immagine/audio dentro una tabella semplice, 
-                // disabilitiamo lo scudo protettivo per permettere il rilascio dentro le celle (TD/TH).
+                // DRAG & DROP: Ignora lo scudo se rilasciamo l'immagine in una tabella semplice
                 if (protectedParent && protectedParent.classList.contains('simple-table-wrapper') && ['image', 'audio', 'snippet'].includes(AppState.draggedBlockType)) {
                     protectedParent = null; 
                 }
@@ -616,7 +635,6 @@ const EventsGlobal = {
                 e.stopPropagation();
 
                 const blockId = AppState.draggedBlockId;
-                console.log(`[MACRO-DRAG] 4. events-global drop innescato. Tentativo di spostamento per: ${blockId}`);
 
                 // DRAG ASSIST: Arresto Immediato del motore prima dei calcoli di rilascio
                 stopDragAssist();
@@ -640,7 +658,6 @@ const EventsGlobal = {
                 }
 
                 if (!sourceBlock) {
-                    console.log(`[MACRO-DRAG] 5. ERRORE: sourceBlock non trovato nel DOM per ID: ${blockId}`);
                     AppState.draggedBlockId = null;
                     AppState.draggedBlockType = null;
                     return;
@@ -801,18 +818,20 @@ const EventsGlobal = {
             const isCtrlOrCmd = e.ctrlKey || e.metaKey;
             const key = e.key.toLowerCase();
 
-            // ISOLAMENTO SELECT-ALL (Ctrl+A) PER BLOCCHI DI CODICE
+            // ISOLAMENTO SELECT-ALL (Ctrl+A)
             if (isCtrlOrCmd && key === 'a' && AppState.isEditMode) {
                 const sel = window.getSelection();
                 if (sel.rangeCount > 0) {
                     let node = sel.anchorNode;
                     if (node && node.nodeType === 3) node = node.parentNode;
                     
-                    const codeBlock = node ? node.closest('.code-content') : null;
-                    if (codeBlock) {
+                    // Identifica se siamo in una sotto-area editabile protetta
+                    const isolatedArea = node ? node.closest('.code-content, .journal-content, .snippet-text, .adv-cell-text, td[contenteditable="true"], th[contenteditable="true"]') : null;
+                    
+                    if (isolatedArea) {
                         e.preventDefault();
                         const range = document.createRange();
-                        range.selectNodeContents(codeBlock);
+                        range.selectNodeContents(isolatedArea);
                         sel.removeAllRanges();
                         sel.addRange(range);
                         return;

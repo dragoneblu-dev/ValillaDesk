@@ -3,6 +3,8 @@
  * Mixin per Formattazione Testuale, Stili Toolbar, Segnalibri, Appunti Inline e Inserimento Widget.
  * FIX REGRESSIONE: Ripristinato l'uso dello Zero-Width Space (\u200B) dopo l'inserimento di oggetti Inline.
  * FIX GOMMA: La Spugna Magica ora applica la "Deep Sanitization" draconiana su DIV e attributi alieni.
+ * FIX SNIPPET: Reintegrata e corretta la logica di analisi del blocco vuoto. Ora lo snippet viene 
+ * inserito all'interno del paragrafo esistente senza distruggere i tag strutturali (P, LI, DIV).
  */
 Object.assign(Editor, {
 
@@ -605,31 +607,22 @@ Object.assign(Editor, {
         // 1. Cerca il blocco contenitore più vicino al cursore (paragrafo, div, intestazione)
         let targetBlock = node ? node.closest('p, div, li, h1, h2, h3, h4, h5, h6') : null;
         
-        // 2. Verifica se il blocco trovato è "vuoto" (ignorando spazi invisibili, a capo e ritorni a carrello)
-        // Assicurandosi anche di non eliminare accidentalmente l'intero editor (id !== 'noteContent') e 
-        // che non contenga altri Widget.
+        // 2. Verifica se il blocco trovato è "vuoto"
         const hasWidgets = targetBlock ? !!targetBlock.querySelector('.adv-widget-shell, .adv-inline-shell, img, audio, iframe') : false;
         const isEmptyBlock = targetBlock && targetBlock.id !== 'noteContent' && !hasWidgets && targetBlock.textContent.replace(/[\u200B\n\r]/g, '').trim() === '';
 
         if (isEmptyBlock) {
-            // 3a. Se la riga è vuota, la SOSTITUISCE interamente con il nuovo widget.
-            // Questo previene il bug del "Nesting" in cui il widget finisce dentro un <p>
             targetBlock.parentNode.replaceChild(wrapper, targetBlock);
         } else {
-            // 3b. Se la riga contiene testo, NON la distrugge. Inserisce il widget spaccando il testo
-            // nel punto esatto in cui si trova il cursore.
             if (selection.rangeCount) {
                 const range = selection.getRangeAt(0);
                 range.deleteContents();
                 range.insertNode(wrapper);
             } else {
-                // Fallback estremo se si perde la selezione
                 document.getElementById('noteContent').appendChild(wrapper);
             }
         }
         
-        // 4. Crea un nuovo paragrafo vuoto (<br>) e lo posiziona subito DOPO il widget appena inserito.
-        // Questo permette all'utente di avere un punto in cui cliccare per continuare a scrivere.
         const p = document.createElement('p'); p.innerHTML = '<br>';
         wrapper.parentNode.insertBefore(p, wrapper.nextSibling);
 
@@ -678,22 +671,29 @@ Object.assign(Editor, {
         wrapper.appendChild(btnSpan);
         wrapper.appendChild(document.createTextNode('\u200B'));
 
-        // 1. Cerca il blocco contenitore più vicino al cursore (paragrafo, div, intestazione)
+        // REINTEGRAZIONE E CORREZIONE: Controllo strutturale del blocco per prevenire il Nesting
         let targetBlock = range.startContainer.nodeType === 3 ? range.startContainer.parentNode.closest('p, div, li, h1, h2, h3, h4, h5, h6') : range.startContainer.closest('p, div, li, h1, h2, h3, h4, h5, h6');
         const hasWidgets = targetBlock ? !!targetBlock.querySelector('.adv-widget-shell, .adv-inline-shell, img, audio, iframe') : false;
         const isEmptyBlock = targetBlock && targetBlock.id !== 'noteContent' && !hasWidgets && targetBlock.textContent.replace(/[\u200B\n\r]/g, '').trim() === '';
 
+        range.deleteContents();
+
         if (isEmptyBlock) {
-            // 3a. Sostituisce l'intero blocco vuoto per prevenire nesting anomalo di snippet
-            targetBlock.parentNode.replaceChild(wrapper, targetBlock);
+            // FIX INLINE BLOCK NESTING: Svuotiamo il paragrafo e inseriamo lo span al suo interno
+            // Mantenendo il tag P originale, l'editor non andrà in crash strutturale.
+            targetBlock.innerHTML = '';
+            targetBlock.appendChild(wrapper);
         } else {
-            // 3b. Inserisce lo snippet inline
-            range.deleteContents();
             range.insertNode(wrapper);
         }
 
-        const spaceNode = document.createTextNode('\u200B'); 
-        wrapper.parentNode.insertBefore(spaceNode, wrapper.nextSibling);
+        // Cuscinetti esterni di sicurezza per permettere alla freccia ArrowDown 
+        // e ArrowRight del browser di superare l'ostacolo dell'inline-flex
+        const zwsBefore = document.createTextNode('\u200B');
+        const zwsAfter = document.createTextNode('\u200B');
+        
+        wrapper.parentNode.insertBefore(zwsBefore, wrapper);
+        wrapper.parentNode.insertBefore(zwsAfter, wrapper.nextSibling);
 
         const newRange = document.createRange();
         newRange.selectNodeContents(textSpan);
@@ -1015,13 +1015,18 @@ Object.assign(Editor, {
         wrapper.appendChild(dataStorage);
 
         range.deleteContents();
+        
+        // FIX INLINE BLOCK NESTING E CURSORE: Aggiungiamo i cuscinetti Zero-Width Space
+        // per permettere alla freccia ArrowDown del browser di funzionare.
+        const zwsBefore = document.createTextNode('\u200B');
+        const zwsAfter = document.createTextNode('\u200B');
+        
+        range.insertNode(zwsAfter);
         range.insertNode(wrapper);
-
-        const spaceNode = document.createTextNode('\u200B');
-        wrapper.parentNode.insertBefore(spaceNode, wrapper.nextSibling);
+        range.insertNode(zwsBefore);
 
         const newRange = document.createRange();
-        newRange.setStartAfter(spaceNode);
+        newRange.setStartAfter(zwsAfter);
         newRange.collapse(true);
         selection.removeAllRanges();
         selection.addRange(newRange);
