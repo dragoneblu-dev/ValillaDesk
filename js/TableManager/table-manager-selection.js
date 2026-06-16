@@ -335,28 +335,56 @@ Object.assign(TableManager.Selection, {
         
         if (rs === 1 && cs === 1) return;
 
+        const table = cell.closest('table');
+        if (!table) return;
+
         if (typeof Editor !== 'undefined') Editor.saveSnapshot();
+
+        // 1. Estraiamo la mappa della griglia *prima* di rimuovere gli attributi
+        // per avere le coordinate fisiche (x, y) della cella da dividere.
+        const { cellData } = TableManager.getGridMap(table);
+        const pos = cellData.get(cell);
+
+        const startX = pos ? pos.x : 0;
+        const startY = pos ? pos.y : cell.parentNode.rowIndex;
+        const cellType = cell.tagName.toLowerCase();
 
         cell.removeAttribute('rowspan');
         cell.removeAttribute('colspan');
 
-        const row = cell.parentNode;
-        const table = row.parentNode;
-        const rowIndex = Array.from(table.children).indexOf(row);
-        const cellType = cell.tagName.toLowerCase();
+        // 2. Aggiungiamo le celle mancanti sulla STESSA riga
+        for (let c = 1; c < cs; c++) {
+            const newCell = document.createElement(cellType);
+            newCell.innerHTML = '<br>';
+            newCell.setAttribute('contenteditable', 'true');
+            cell.parentNode.insertBefore(newCell, cell.nextSibling);
+        }
 
-        for (let r = 0; r < rs; r++) {
-            const targetRow = table.children[rowIndex + r];
+        // 3. Aggiungiamo le celle mancanti sulle righe SOTTOSTANTI generate dal rowspan
+        for (let r = 1; r < rs; r++) {
+            const targetRow = table.rows[startY + r];
             if (!targetRow) continue;
+
+            // Troviamo il punto di inserimento corretto:
+            // Cerchiamo la prima cella fisica della riga target che, nella mappa originale,
+            // si trovava a destra o nella stessa posizione (x >= startX) rispetto alla cella divisa.
+            let insertBeforeNode = null;
+            for (let i = 0; i < targetRow.cells.length; i++) {
+                const cNode = targetRow.cells[i];
+                const cPos = cellData.get(cNode);
+                if (cPos && cPos.x >= startX) {
+                    insertBeforeNode = cNode;
+                    break;
+                }
+            }
             
-            const cellsToAdd = (r === 0) ? cs - 1 : cs;
-            for (let c = 0; c < cellsToAdd; c++) {
+            for (let c = 0; c < cs; c++) {
                 const newCell = document.createElement(cellType);
                 newCell.innerHTML = '<br>';
                 newCell.setAttribute('contenteditable', 'true');
                 
-                if (r === 0) {
-                    targetRow.insertBefore(newCell, cell.nextSibling);
+                if (insertBeforeNode) {
+                    targetRow.insertBefore(newCell, insertBeforeNode);
                 } else {
                     targetRow.appendChild(newCell);
                 }
