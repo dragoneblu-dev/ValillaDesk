@@ -216,8 +216,8 @@
 .formula-editor-area {
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: var(--code-bg);
+    color: var(--code-text);
     padding: 10px;
     min-height: 100px;
     flex: 1;
