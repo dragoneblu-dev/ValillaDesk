@@ -1,9 +1,7 @@
 /**
  * AdvancedTableCalendar.js
  * Modulo per la Vista Calendario dei Database.
- * FIX CITAZIONI: Propagazione del blocco della modalità modifica (isEdit = false) per le citazioni.
- * FIX ZOOM: Corretti i bottoni di Zoom orario che causavano rimbalzi di evento.
- * FIX TOOLTIP: Il tooltip usa il sistema centralizzato (getFormatDisplayValue) per mostrare nomi reali e non ID.
+ * FIX COLONNE NASCOSTE: L'etichetta dell'evento è ora dinamicamente assegnata alla PRIMA COLONNA VISIBILE e non hardcodata.
  */
 
 const AdvancedCalendar = {
@@ -34,6 +32,8 @@ const AdvancedCalendar = {
             focusDate.setDate(focusDate.getDate() + (direction * 7));
         } else if (mode === 'day') {
             focusDate.setDate(focusDate.getDate() + direction);
+        } else if (mode === 'year') {
+            focusDate.setFullYear(focusDate.getFullYear() + direction);
         }
 
         state.calendarFocusDate = focusDate.getTime();
@@ -182,7 +182,7 @@ const AdvancedCalendar = {
 
             let deltaMs = 0;
 
-            if (dateCol.type === 'datetime' && state.calendarMode !== 'month') {
+            if (dateCol.type === 'datetime' && state.calendarMode !== 'month' && state.calendarMode !== 'year') {
                 const pxPerHour = state.calendarZoom || 40;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const dropY = e.clientY - rect.top;
@@ -333,10 +333,7 @@ const AdvancedCalendar = {
                 let rawV = r.virtualCells[p.id];
                 
                 if (rawV !== '' && rawV !== null && rawV !== undefined && !(Array.isArray(rawV) && rawV.length === 0)) {
-                    
-                    // FIX TOOLTIP: Usiamo l'estrattore centralizzato per risolvere array, date e ID Relazioni
                     let displayV = AdvancedTable.getFormatDisplayValue(p, rawV);
-
                     const safeName = String(p.name).replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const safeVal = displayV.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     tooltipHtml += `<div style="margin-bottom:2px;"><span style="color:var(--text-secondary);">${safeName}:</span> ${safeVal}</div>`;
@@ -483,7 +480,9 @@ const AdvancedCalendar = {
         });
 
         let monthName = focusDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' }).toUpperCase();
-        if (mode === 'week') {
+        if (mode === 'year') {
+            monthName = `ANNO: ${focusDate.getFullYear()}`;
+        } else if (mode === 'week') {
             const startOfWeek = new Date(focusDate);
             const day = startOfWeek.getDay();
             const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
@@ -512,13 +511,14 @@ const AdvancedCalendar = {
             </div>
             <div class="adv-cal-view-group">
                 ${zoomControls}
-                <button class="adv-add-btn" style="border-radius:0; border:none; ${mode === 'month' ? 'background:var(--item-active); color:var(--accent-color); font-weight:bold;' : ''}" onclick="AdvancedCalendar.changeMode(event, '${tableId}', 'month')">Mese</button>
-                <button class="adv-add-btn" style="border-radius:0; border:none; border-left:1px solid var(--border-color); border-right:1px solid var(--border-color); ${mode === 'week' ? 'background:var(--item-active); color:var(--accent-color); font-weight:bold;' : ''}" onclick="AdvancedCalendar.changeMode(event, '${tableId}', 'week')">Settimana</button>
+                <button class="adv-add-btn" style="border-radius:0; border:none; ${mode === 'year' ? 'background:var(--item-active); color:var(--accent-color); font-weight:bold;' : ''}" onclick="AdvancedCalendar.changeMode(event, '${tableId}', 'year')">Anno</button>
+                <button class="adv-add-btn" style="border-radius:0; border:none; border-left:1px solid var(--border-color); border-right:1px solid var(--border-color); ${mode === 'month' ? 'background:var(--item-active); color:var(--accent-color); font-weight:bold;' : ''}" onclick="AdvancedCalendar.changeMode(event, '${tableId}', 'month')">Mese</button>
+                <button class="adv-add-btn" style="border-radius:0; border:none; border-right:1px solid var(--border-color); ${mode === 'week' ? 'background:var(--item-active); color:var(--accent-color); font-weight:bold;' : ''}" onclick="AdvancedCalendar.changeMode(event, '${tableId}', 'week')">Settimana</button>
                 <button class="adv-add-btn" style="border-radius:0; border:none; ${mode === 'day' ? 'background:var(--item-active); color:var(--accent-color); font-weight:bold;' : ''}" onclick="AdvancedCalendar.changeMode(event, '${tableId}', 'day')">Giorno</button>
             </div>
         </div>`;
 
-        if (selectCol && state.selectOptions[selectCol.id]) {
+        if (selectCol && state.selectOptions[selectCol.id] && mode !== 'year') {
             const activeFilters = state.calendarLegendFilter ||[];
             html += `<div style="display:flex; flex-wrap:wrap; gap:5px; padding:5px 10px; border:1px solid var(--border-color); border-bottom:none; background:var(--sidebar-bg); border-radius:6px 6px 0 0;">`;
             html += `<span style="font-size:0.75rem; color:var(--text-secondary); margin-right:5px; align-self:center;">Filtra per ${selectCol.name}:</span>`;
@@ -538,12 +538,89 @@ const AdvancedCalendar = {
             html += `</div>`;
         }
 
-        html += `<div class="adv-cal-wrapper" style="touch-action: pan-y; ${selectCol ? 'border-top-left-radius:0; border-top-right-radius:0;' : ''}" onpointerdown="AdvancedCalendar.handlePointerDown(event)" onpointerup="AdvancedCalendar.handlePointerUp(event, '${tableId}')">`;
+        html += `<div class="adv-cal-wrapper" style="touch-action: pan-y; ${selectCol && mode !== 'year' ? 'border-top-left-radius:0; border-top-right-radius:0;' : ''}" onpointerdown="AdvancedCalendar.handlePointerDown(event)" onpointerup="AdvancedCalendar.handlePointerUp(event, '${tableId}')">`;
 
-        const titleCol = state.columns[0];
+        // -------------------------------------------------------------
+        // CALCOLO DELLE COLONNE VISIBILI (Usato da Month, Week e Day)
+        // -------------------------------------------------------------
         const viewId = 'calendar_' + dateColId;
-        const hiddenList = state.viewConfig && state.viewConfig[viewId] ? state.viewConfig[viewId].hiddenCols :[];
-        const propCols = state.columns.filter(c => !c.hidden && !hiddenList.includes(c.id) && c.id !== titleCol.id && c.id !== dateColId);
+        const hiddenList = state.viewConfig && state.viewConfig[viewId] ? state.viewConfig[viewId].hiddenCols : [];
+        const visibleCols = state.columns.filter(c => !c.hidden && !hiddenList.includes(c.id));
+        
+        // FIX BUG 1: Il titolo è la prima colonna VISIBILE, non la prima assoluta!
+        const titleCol = visibleCols.length > 0 ? visibleCols[0] : state.columns[0];
+        
+        // Le proprietà da mostrare sono tutte le visibili TRANNE il titolo e la data corrente
+        const propCols = visibleCols.filter(c => c.id !== titleCol.id && c.id !== dateColId);
+
+
+        // --- VISTA ANNUALE ---
+        if (mode === 'year') {
+            const year = focusDate.getFullYear();
+            const monthNames = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+            
+            html += `<div class="adv-scroll-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; padding: 15px; background: var(--bg-color); max-height: 600px; overflow-y: auto;">`;
+
+            for (let m = 0; m < 12; m++) {
+                const firstDay = new Date(year, m, 1);
+                const lastDay = new Date(year, m + 1, 0).getDate();
+                let startOffset = firstDay.getDay() - 1;
+                if (startOffset === -1) startOffset = 6;
+
+                html += `<div style="border: 1px solid var(--border-color); border-radius: 6px; background: var(--sidebar-bg); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">`;
+                html += `<div style="text-align:center; font-weight:bold; font-size: 0.9rem; padding: 6px; background: rgba(0,0,0,0.03); border-bottom: 1px solid var(--border-color); color: var(--accent-color);">${monthNames[m]}</div>`;
+                html += `<div style="display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; font-size:0.6rem; color:var(--text-secondary); padding: 4px 0; border-bottom: 1px solid var(--border-color);">
+                            <div>L</div><div>M</div><div>M</div><div>G</div><div>V</div><div>S</div><div>D</div>
+                         </div>`;
+                html += `<div style="display:grid; grid-template-columns: repeat(7, 1fr); padding: 4px; gap: 2px;">`;
+
+                // Spazi vuoti per inizio mese
+                for (let i = 0; i < startOffset; i++) {
+                    html += `<div></div>`;
+                }
+
+                // Giorni
+                for (let d = 1; d <= lastDay; d++) {
+                    const currentGridDate = new Date(year, m, d).setHours(0,0,0,0);
+                    const isToday = currentGridDate === new Date().setHours(0,0,0,0);
+                    const events = eventsByDate[currentGridDate] || [];
+                    const eventCount = events.length;
+
+                    let bgStyle = 'transparent';
+                    let textStyle = 'var(--text-primary)';
+                    let fw = isToday ? 'bold' : 'normal';
+                    let borderStyle = isToday ? '1px solid var(--accent-color)' : '1px solid transparent';
+                    let cursorStyle = 'default';
+                    let clickEvent = '';
+
+                    if (eventCount > 0) {
+                        bgStyle = 'rgba(37, 99, 235, 0.1)';
+                        textStyle = 'var(--accent-color)';
+                        fw = 'bold';
+                        cursorStyle = 'pointer';
+                        clickEvent = `onclick="AdvancedCalendar.expandDayView(event, '${tableId}', ${currentGridDate})"`;
+                        
+                        // Heatmap effect: se ci sono più di 3 eventi, lo sfondo diventa più scuro
+                        if (eventCount > 3) bgStyle = 'rgba(37, 99, 235, 0.2)';
+                        if (eventCount > 6) bgStyle = 'rgba(37, 99, 235, 0.3)';
+                    }
+
+                    html += `
+                        <div ${clickEvent} style="aspect-ratio: 1; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:4px; font-size:0.75rem; font-weight:${fw}; color:${textStyle}; background:${bgStyle}; border:${borderStyle}; cursor:${cursorStyle}; transition: transform 0.1s;"
+                             ${eventCount > 0 ? `onmouseenter="this.style.transform='scale(1.1)'" onmouseleave="this.style.transform='scale(1)'"` : ''}>
+                            ${d}
+                            ${eventCount > 0 ? `<div style="font-size:0.5rem; background:var(--danger-color); color:white; border-radius:10px; padding:1px 4px; line-height:1; margin-top:1px;">${eventCount}</div>` : ''}
+                        </div>
+                    `;
+                }
+
+                html += `</div></div>`;
+            }
+
+            html += `</div></div>`;
+            bodyContainer.innerHTML = html;
+            return;
+        }
 
         const renderEventStandard = (r) => {
             let tVal = r.virtualCells[titleCol.id] || 'Senza Titolo';

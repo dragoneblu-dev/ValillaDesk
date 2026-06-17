@@ -1,13 +1,8 @@
 /**
  * AdvancedTableFormula.js
- * Motore JS in Sandbox per Colonne Calcolate e Modulo Formula Editor in UI.
- * FIX CONTESTO: _buildRigaContext ora rileva automaticamente se il database corrente
- * possiede una colonna 'record_note' (Pagina Dedicata), permettendo alla macro 
- * NOTA_CORRENTE() di funzionare anche all'interno dei database utente standard.
- * FIX REFACTORING DRY: L'interfaccia dell'editor ora si appoggia nativamente al CodeManager
- * per la sintassi e all'engine Editor per la manipolazione del cursore, eliminando doppioni.
- * FIX BUG SAVE: Rimossa chiamata alla funzione obsoleta _getTextAndCaret e sostituita con estrazione nativa.
- * FIX MACRO: Le funzioni native (SOMMA, MEDIA, ecc.) sono state blindate per accettare array, oggetti o primitivi multipli (Stile Excel).
+ * Motore di esecuzione Sandbox (JS eval), funzioni Wrapper per la matematica
+ * e Modulo Formula Editor in UI.
+ * FIX TEMA: Rimossi colori di sfondo hardcoded. L'editor si adatta al tema globale.
  */
 
 Object.assign(AdvancedTable, {
@@ -131,6 +126,60 @@ Object.assign(AdvancedTable, {
         const giorno_settimana = GIORNO_SETTIMANA, Giorno_settimana = GIORNO_SETTIMANA, Giorno_Settimana = GIORNO_SETTIMANA;
     `,
 
+    evaluateFormula: (formulaStr, row, columns, tableId, stateTitle, virtualCells = null, renderCache = null, origineContext = null) => {
+        if (!formulaStr) return '';
+        try {
+            const riga = AdvancedTable._buildRigaContext(row, columns, virtualCells, renderCache || {});
+            const tabella = AdvancedTable._buildTabellaContext(renderCache);
+            const righe = tabella[stateTitle] || []; 
+            const origine = origineContext || {};
+
+            const fullCode = `'use strict';\n${AdvancedTable._formulaWrappers}\nreturn ${formulaStr};`;
+
+            let executor = AdvancedTable._compiledFormulas.get(formulaStr);
+            if (!executor) {
+                executor = new Function('riga', 'tabella', 'righe', 'origine', 'window', 'document', 'localStorage', 'fetch', 'AppState', 'Store', 'Editor', 'AdvancedTable', 'UI', fullCode);
+                AdvancedTable._compiledFormulas.set(formulaStr, executor);
+            }
+            
+            const result = executor.call(null, riga, tabella, righe, origine, undefined, undefined, undefined, undefined, AppState, Store, undefined, AdvancedTable, undefined);
+
+            if (result === undefined || result === null) return '';
+            if (typeof result === 'object') return JSON.stringify(result);
+            if (Number.isNaN(result)) return 'NaN';
+            return String(result);
+        } catch (e) {
+            console.error("🔴 [FORMULA ERROR] Valutazione sincrona fallita:", e, "\nFormula:", formulaStr);
+            return `<span style="color:var(--danger-color)" title="${e.message.replace(/"/g, "'")}">${Icons.alertTriangle} Err</span>`;
+        }
+    },
+
+    executeAsyncScript: async (scriptStr, row, columns, tableId, stateTitle, virtualCells = null, origineContext = null) => {
+        if (!scriptStr) return '';
+        try {
+            const riga = AdvancedTable._buildRigaContext(row, columns, virtualCells);
+            const tabella = AdvancedTable._buildTabellaContext(null); 
+            const righe = tabella[stateTitle] || []; 
+            const origine = origineContext || {};
+
+            const fullCode = `'use strict';\n${AdvancedTable._formulaWrappers}\nreturn ${scriptStr};`;
+
+            const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+            const executor = new AsyncFunction('riga', 'tabella', 'righe', 'origine', 'window', 'document', 'localStorage', 'fetch', 'AppState', 'Store', 'Editor', 'AdvancedTable', 'UI', fullCode);
+            
+        // FIX SANDBOX ASYNC: AppState e le API Globali vengono correttamente iniettate!
+            const result = await executor.call(null, riga, tabella, righe, origine, undefined, undefined, undefined, undefined, AppState, Store, undefined, AdvancedTable, undefined);
+
+            if (result === undefined || result === null) return '';
+            if (typeof result === 'object') return JSON.stringify(result);
+            if (Number.isNaN(result)) return 'NaN';
+            return String(result);
+        } catch (e) {
+            console.error("🔴 [FORMULA ERROR] Valutazione asincrona (Macro/Automazione) fallita:", e, "\nScript:", scriptStr);
+            return `<span style="color:var(--danger-color)" title="${e.message.replace(/"/g, "'")}">${Icons.alertTriangle} Async Err</span>`;
+        }
+    },
+
     editFormula: (tableId, colId) => {
         let state = AdvancedTable.getState(tableId);
         const col = state.columns.find(c => c.id === colId);
@@ -141,7 +190,7 @@ Object.assign(AdvancedTable, {
 
         const bodyHTML = `
             <div style="display:flex; flex-direction:column; gap:10px; height:100%;">
-                <pre id="advFormulaInput" class="formula-editor-area code-content" data-language="formula" contenteditable="true" spellcheck="false" style="flex:1; min-height:150px; max-height:300px; white-space: pre-wrap; word-break: break-all; margin: 0; outline: none; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px; background: #1e1e1e; color: #d4d4d4; font-family: 'Menlo', 'Monaco', 'Courier New', monospace;"></pre>
+                <pre id="advFormulaInput" class="formula-editor-area code-content" data-language="formula" contenteditable="true" spellcheck="false" style="margin: 0;"></pre>
                 
                 <div id="advFormulaValidationBar" style="background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); font-size: 0.8rem; display:flex; align-items:center; gap:8px;">
                     <span id="advFormulaStatusIcon" style="display:inline-flex;">${Icons.hourglass}</span>

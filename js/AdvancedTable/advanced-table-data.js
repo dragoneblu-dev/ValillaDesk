@@ -1,10 +1,8 @@
 /**
  * AdvancedTableData.js
  * Isolamento delle operazioni CRUD (Create, Read, Update, Delete) per i Database.
- * FIX SYNC: Aggiunta funzione touchRecordUpdate per aggiornare l'updatedAt del record.
- * FIX ARCHITETTURA: Centralizzate e fuse le funzioni filterRows e sortRows per eliminare la duplicazione.
- * FIX REGRESSIONE: Reintegrato deleteRecord e aggiunto il supporto Pivot al motore di ordinamento.
- * FIX FILTRI RELAZIONI: Il motore di filtraggio ora risolve correttamente gli ID in nomi reali per le colonne relation e relation_backlink prima di effettuare i paragoni esatti.
+ * FIX SEARCH CONTENT: Il filtro text/contains ora cerca anche all'interno del corpo (content) 
+ * delle note dedicate (record_note) e non solo nel titolo.
  */
 
 Object.assign(AdvancedTable, {
@@ -615,6 +613,14 @@ Object.assign(AdvancedTable, {
                     }
                     if (isDateType) {
                         displayStr += " " + cellVal; 
+                    }
+                    // FIX RECORD NOTE SEARCH: Estraiamo il corpo della nota per permettere 
+                    // la ricerca profonda all'interno dei record
+                    if (colDef.type === 'record_note' && cellVal) {
+                        const linkedNote = typeof Store !== 'undefined' ? Store.getNote(cellVal) : null;
+                        if (linkedNote && typeof UI !== 'undefined') {
+                            displayStr += " " + UI.extractSearchableText(linkedNote.content);
+                        }
                     }
                 }
 

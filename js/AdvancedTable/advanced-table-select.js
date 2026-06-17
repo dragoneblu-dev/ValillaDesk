@@ -55,12 +55,12 @@ Object.assign(AdvancedTable, {
             }
         }
 
-        console.log(`[SELECT-MENU LOG] Generazione Menu per colonna: ${col.name}`);
-        console.log(`[SELECT-MENU LOG] ID Ancoraggio individuato: ${anchorId}`);
+        //console.log(`[SELECT-MENU LOG] Generazione Menu per colonna: ${col.name}`);
+        //console.log(`[SELECT-MENU LOG] ID Ancoraggio individuato: ${anchorId}`);
         const anchorNode = document.getElementById(anchorId);
-        if (!anchorNode) {
-            console.warn(`[SELECT-MENU LOG] ATTENZIONE: Il nodo HTML di ancoraggio "${anchorId}" non esiste nel DOM! Il menu verrà generato a coordinate 0,0.`);
-        }
+        //if (!anchorNode) {
+        //    console.warn(`[SELECT-MENU LOG] ATTENZIONE: Il nodo HTML di ancoraggio "${anchorId}" non esiste nel DOM! Il menu verrà generato a coordinate 0,0.`);
+        //}
 
         AdvancedTable.renderSelectMenuContent(dropdown, tableId, rowId, colId, state, options, currentVals, col, anchorId);
         document.body.appendChild(dropdown);

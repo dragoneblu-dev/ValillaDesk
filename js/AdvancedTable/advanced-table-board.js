@@ -1,7 +1,7 @@
 /**
  * AdvancedTableBoard.js
  * Modulo Kanban (Bacheca Trello-style) per Tabelle Database.
- * FIX CITAZIONI: Propagazione del blocco della modalità modifica (isEdit = false) per le citazioni.
+ * LOG BOMB: Strumentazione di tracciamento profondo per gli eventi Mousedown e Drag.
  */
 
 const AdvancedBoard = {
@@ -178,9 +178,9 @@ const AdvancedBoard = {
         const viewId = 'board_' + groupColId;
         const hiddenList = state.viewConfig && state.viewConfig[viewId] ? state.viewConfig[viewId].hiddenCols :[];
 
-        const visibleCols = state.columns.filter(c => !c.hidden && !hiddenList.includes(c.id) && c.id !== groupColId);
-        const titleCol = state.columns[0];
-        const propCols = visibleCols.filter(c => c.id !== titleCol.id);
+        const allVisible = state.columns.filter(c => !c.hidden && !hiddenList.includes(c.id));
+        const titleCol = allVisible.length > 0 ? allVisible[0] : state.columns[0];
+        const propCols = allVisible.filter(c => c.id !== titleCol.id && c.id !== groupColId);
 
         columnsData.forEach(colData => {
             const count = boardData[colData.value].length;
@@ -209,8 +209,12 @@ const AdvancedBoard = {
                 }
                 tVal = String(tVal).replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+                // LOG BOMB 1: Mousedown handler per vedere chi viene cliccato
+                const mousedownLog = `onmousedown="console.log('🟨 [BOARD-MOUSEDOWN] Target:', event.target.tagName, 'Class:', event.target.className, 'ContentEditable:', event.target.isContentEditable)"`;
+
                 html += `
                     <div class="adv-board-card" draggable="${isEdit ? 'true' : 'false'}" 
+                         ${mousedownLog}
                          ondragstart="AdvancedBoard.onDragStart(event, '${row.id}', '${tableId}')"
                          ondragend="AdvancedBoard.onDragEnd(event)"
                          style="cursor:${isEdit ? 'grab' : 'pointer'};">
@@ -231,6 +235,7 @@ const AdvancedBoard = {
 
                     if (pVal === '' || pVal === null || pVal === undefined || (Array.isArray(pVal) && pVal.length === 0)) return;
 
+                    // RIPRISTINATO: Rendering NATIVO (Senza alterare le classi per capire se il problema è lì)
                     const rendered = AdvancedTable.renderCell(tableId, row, pCol, pVal, state, false);
 
                     let pValStr = '';
@@ -281,6 +286,16 @@ const AdvancedBoard = {
     },
 
     onDragStart: (e, rowId, tableId) => {
+        // --- LOG BOMB 2: Analisi profonda del DragStart ---
+        console.group(`🟪 [BOARD-DRAG-START] Innesco Drag & Drop per Riga: ${rowId}`);
+        console.log(`1. Target Tag:`, e.target.tagName);
+        console.log(`2. Target Class:`, e.target.className);
+        console.log(`3. Target isContentEditable:`, e.target.isContentEditable);
+        console.log(`4. Event defaultPrevented:`, e.defaultPrevented);
+
+        // NESSUN FIREWALL (Li ho tolti apposta). Voglio vedere se arriva fino alla fine del blocco
+        // o se esplode in mezzo.
+        
         AdvancedBoard.draggedCardRowId = rowId;
         AdvancedBoard.draggedFromTableId = tableId;
         e.dataTransfer.effectAllowed = 'move';
@@ -318,6 +333,9 @@ const AdvancedBoard = {
         }, 0);
 
         document.addEventListener('dragover', AdvancedBoard.updateGhostPosition);
+        
+        console.log(`🟪 [BOARD-DRAG-START] Fine del blocco di preparazione eseguito con successo.`);
+        console.groupEnd();
     },
 
     updateGhostPosition: (e) => {
@@ -328,6 +346,7 @@ const AdvancedBoard = {
     },
 
     onDragEnd: (e) => {
+        console.log(`🟩 [BOARD-DRAG-END] Drag terminato o abortito dal browser.`);
         e.currentTarget.style.opacity = '1';
         e.currentTarget.style.border = '1px solid var(--border-color)';
         e.currentTarget.style.backgroundColor = 'var(--bg-color)';
@@ -354,6 +373,8 @@ const AdvancedBoard = {
 
     onDrop: (e, tableId, newGroupValue) => {
         e.preventDefault();
+        console.log(`🟩 [BOARD-DROP] Rilasciato su gruppo: ${newGroupValue || 'Senza Stato'}`);
+        
         const target = e.currentTarget;
         target.style.backgroundColor = 'transparent';
 

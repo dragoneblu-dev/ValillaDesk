@@ -1,7 +1,7 @@
 /**
  * AdvancedTableTimeline-Render.js
  * Motore Grafico HTML/SVG per la Timeline.
- * FIX CITAZIONI: Propagazione del blocco della modalità modifica (isEdit = false) per le citazioni.
+ * FIX COLONNE NASCOSTE E TITOLO: La colonna titolo è dinamicamente calcolata come prima tra le visibili.
  */
 
 Object.assign(AdvancedTimeline, {
@@ -291,7 +291,14 @@ Object.assign(AdvancedTimeline, {
         
         let leftPanelHTML = '';
         let ganttAreaHTML = '';
-        const titleCol = state.columns[0];
+        
+        // -------------------------------------------------------------
+        // CALCOLO DELLE COLONNE VISIBILI (Timeline)
+        // -------------------------------------------------------------
+        const viewId = 'timeline_' + dateColId;
+        const hiddenList = state.viewConfig && state.viewConfig[viewId] ? state.viewConfig[viewId].hiddenCols : [];
+        const visibleCols = state.columns.filter(c => !c.hidden && !hiddenList.includes(c.id));
+        const titleCol = visibleCols.length > 0 ? visibleCols[0] : state.columns[0];
 
         // FUNZIONE INTERNA: Rendering delle singole attività
         const renderScheduledRows = () => {
@@ -590,7 +597,6 @@ Object.assign(AdvancedTimeline, {
             html += `<div style="margin-top:10px; font-size:0.8rem; color:var(--text-secondary); padding: 5px;">
                         <b><span style="display:inline-flex; align-items:center; gap:5px;">${Icons.alertTriangle} Record senza intervallo di date valido (${unscheduledRows.length}):</b></span> 
                         ${unscheduledRows.map(r => {
-                            // FIX VIEW: Risolve dinamicamente il titolo anche nei resti non programmati
                             let tTitle = r.virtualCells[titleCol.id] || 'Senza Titolo';
                             if (titleCol.type === 'record_note') {
                                 const noteObj = typeof Store !== 'undefined' ? Store.getNote(tTitle) : null;
