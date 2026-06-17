@@ -8,6 +8,8 @@
  * per impedire l'eliminazione fisica di immagini e audio validi dal disco.
  * FIX ZWS POLLUTION: Implementato Garbage Collector in tempo reale in sanitizeContent per estirpare 
  * gli Zero-Width Space (\u200B) orfani dal DOM, pur proteggendo quelli necessari all'infrastruttura Widget.
+ * FIX DRAG & DROP: Inseriti .adv-board-card e gli eventi calendario nella Whitelist di handleSmartClickEscape
+ * per impedire che il preventDefault() sul mousedown blocchi la sequenza di Drag HTML5 nativa.
  */
 
 const Editor = {
@@ -106,7 +108,11 @@ const Editor = {
             return;
         }
 
-        if (e.target.closest('th, td, .widget-drag-handle, .widget-options-btn, .adv-tool-btn, .adv-add-btn, .adv-icon-btn, .adv-table-header, .btn, .action-btn-run, .adv-btn-icon-trigger, .snippet-copy-btn, .inline-note-marker')) {
+        // LA SOLUZIONE: Aggiunti .adv-board-card e i blocchi del calendario alla Whitelist.
+        // Se il click avviene su questi elementi (anche nelle loro parti non testuali), 
+        // l'editor ignora il click, permettendo al browser di continuare e innescare il dragstart.
+        if (e.target.closest('th, td, .widget-drag-handle, .widget-options-btn, .adv-tool-btn, .adv-add-btn, .adv-icon-btn, .adv-table-header, .btn, .action-btn-run, .adv-btn-icon-trigger, .snippet-copy-btn, .inline-note-marker, .adv-board-card, .adv-cal-event-std, .adv-cal-event-abs')) {
+            console.log("🟢 [SMART-ESCAPE] Click ignorato per consentire interazione nativa (Drag/Click).");
             return;
         }
 
