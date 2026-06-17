@@ -1,10 +1,8 @@
 /**
  * EditorPaste.js
  * Modulo isolato per la gestione degli eventi Copia, Taglia e Incolla.
- * FIX PASTE TABLE: Aggiunta autorizzazione esplicita all'incollatura dentro td/th delle tabelle semplici.
- * FIX IMMAGINI: Aggiunto toast di avviso se l'immagine incollata supera i 200KB per tutelare le prestazioni.
- * FIX CURSORE PASTE: Calcolo matematico predittivo per il cursore nei blocchi di codice.
- * FIX DEEP SANITIZATION: Modalità Draconiana per filtrare la spazzatura web (div, stili, attributi data) proteggendo però i widget nativi.
+ * FIX PASTE BR to P: Se si incolla del testo formattato a <br> all'interno della root, 
+ * questo viene convertito in veri e propri <p> per permettere al tasto TAB di identificare la riga fisica.
  */
 
 Object.assign(Editor, {
@@ -96,6 +94,7 @@ Object.assign(Editor, {
         const items = Array.from((e.clipboardData || e.originalEvent.clipboardData).items);
         let isImage = false;
 
+        // 1. GESTIONE IMMAGINI INCOLLATE (Clipboard File)
         for (let item of items) {
             if (item.kind === 'file' && item.type.includes('image/')) {
                 console.log(`[PASTE-DEBUG] Immagine rilevata. Passo a FileReader.`);
@@ -105,7 +104,7 @@ Object.assign(Editor, {
                 
                 const blob = item.getAsFile();
 
-                // Controllo peso: 200KB (200 * 1024 bytes)
+                // Controllo peso per tutela prestazioni: Avvisa se > 200KB
                 if (blob.size > 204800) {
                     if (typeof UI !== 'undefined' && UI.showToast) {
                         UI.showToast("Consiglio: L'immagine è pesante. Usa 'Inserisci > Collegamento (link) > Immagine Esterna' o comprimila per non rallentare l'App.", "warning");
@@ -215,7 +214,14 @@ Object.assign(Editor, {
                 }
 
                 if (!pastedHTML) {
-                    document.execCommand('insertText', false, pastedText);
+                    let fallbackText = pastedText;
+                    // FIX BR: Anche il plain text incollato nella root viene impaginato correttamente
+                    if (!targetNode.closest('td, th, li, pre')) {
+                        fallbackText = fallbackText.split('\n').join('</p><p>');
+                        document.execCommand('insertHTML', false, `<p>${fallbackText}</p>`);
+                    } else {
+                        document.execCommand('insertText', false, pastedText);
+                    }
                     return;
                 }
 
@@ -224,7 +230,31 @@ Object.assign(Editor, {
                 // Whitelist estesa solo per l'infrastruttura di VanillaDesk
                 const allowedTags = ['B', 'I', 'U', 'S', 'A', 'P', 'DIV', 'SPAN', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'BR', 'IMG', 'SVG', 'PATH', 'POLYLINE', 'LINE', 'RECT', 'CIRCLE', 'INPUT'];
                 const allowedPrefixes = ['hl-', 'tx-', 'bg-', 'text-', 'ff-', 'fs-'];
-                const allowedClasses = ['internal-link', 'file-link', 'code-wrapper', 'code-copy-btn', 'table-striped', 'highlighted-text', 'adv-table-wrapper', 'inline-note-marker', 'inline-note-wrapper', 'inline-note-data', 'adv-checklist', 'adv-checklist-item', 'adv-checklist-cb', 'checklist-text', 'adv-journal-list', 'journal-date-node', 'journal-date-header', 'journal-toggle', 'journal-date-label', 'journal-time-list', 'journal-time-node', 'journal-time-label', 'journal-content', 'hidden-time', 'code-action-bar', 'code-action-btn', 'code-content', 'code-action-lang', 'code-action-copy', 'adv-widget-shell', 'adv-inline-shell', 'widget-type-code', 'adv-action-button-wrapper', 'simple-table-wrapper'];
+                
+                const allowedClasses = [
+                    // Link, Testo e Ricerca
+                    'internal-link', 'file-link', 'highlighted-text', 'search-highlight', 'active-highlight',
+                    // Struttura Shell Base
+                    'adv-widget-shell', 'adv-inline-shell', 'widget-header', 'adv-table-header', 'widget-drag-handle', 'adv-drag-handle', 'widget-options-btn', 'widget-icon', 'widget-title', 'adv-table-title', 'widget-tools', 'adv-tools', 'widget-body', 'widget-editable-area',
+                    // Tipi di Widget
+                    'widget-type-database', 'widget-type-pivot', 'widget-type-journal', 'widget-type-code', 'widget-type-buttonbar', 'widget-type-citation', 'widget-type-columns', 'widget-type-simple-table', 'widget-type-audio', 'widget-type-video',
+                    // Database
+                    'adv-table-wrapper', 'table-striped', 'adv-col-resizer',
+                    // Tabelle Semplici
+                    'simple-table-wrapper', 'table-row-trigger', 'table-col-trigger', 'table-move-trigger',
+                    // Appunti Nascosti e Segnalibri
+                    'inline-note-wrapper', 'inline-note-marker', 'inline-note-data', 'adv-bookmark-marker', 'bookmark-icon',
+                    // Checklist
+                    'adv-checklist', 'adv-checklist-item', 'adv-checklist-cb', 'checklist-text',
+                    // Diario
+                    'adv-journal-wrapper', 'adv-journal-list', 'journal-date-node', 'journal-date-header', 'journal-toggle', 'journal-date-label', 'journal-time-list', 'journal-time-node', 'journal-time-label', 'journal-content', 'hidden-time',
+                    // Codice e Snippet Copiabili
+                    'code-wrapper', 'code-action-bar', 'code-action-btn', 'code-content', 'code-action-lang', 'code-action-copy', 'code-copy-btn', 'adv-copy-snippet', 'snippet-text', 'snippet-copy-btn',
+                    // Citazioni
+                    'block-citation', 'citation-body', 'citation-header',
+                    // Colonne Multi-Layout
+                    'adv-columns-container-wrap', 'adv-columns-continuous', 'adv-columns-independent', 'col-box', 'col-resizer'
+                ];
                 
                 // Whitelist rigorosa per attributi Data (elimina data-id di altri siti web)
                 const allowedDataAttrs = ['data-widget-type', 'data-image-ref', 'data-audio-ref', 'data-note-id', 'data-anchor', 'data-ref-id', 'data-file-path', 'data-tooltip', 'data-row', 'data-col', 'data-raw-value', 'data-decimals', 'data-opt-name', 'data-date', 'data-timer-expire', 'data-ref-note', 'data-ref-type', 'data-collapsed', 'data-last-find', 'data-language'];
@@ -391,6 +421,17 @@ Object.assign(Editor, {
 
                 // Rimozione di link vuoti creati dai siti web
                 finalHTML = finalHTML.replace(/<a[^>]*>\s*(<br\s*\/?>)?\s*<\/a>/gi, '');
+
+                // ==============================================================
+                // FIX BR TO P: Se il target finale della pasta non si trova dentro un 
+                // contenitore che richiede la presenza assoluta dei <br> (come tabelle o liste),
+                // converto i <br> isolati in blocchi di paragrafo in modo che il tasto TAB funzioni.
+                // ==============================================================
+                if (!targetNode.closest('td, th, li, pre')) {
+                    console.log("[PASTE-DEBUG] Cursore libero: Converto <br> in <p> per abilitare TAB.");
+                    finalHTML = finalHTML.replace(/<br\s*\/?>/gi, '</p><p>');
+                    finalHTML = finalHTML.replace(/<p>\s*<\/p>/gi, ''); // Pulisce gli artefatti
+                }
                 
                 document.execCommand('insertHTML', false, finalHTML);
                 Editor._ensureLastLineBreak(document.getElementById('noteContent'));

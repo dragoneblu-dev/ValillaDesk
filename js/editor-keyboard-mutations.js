@@ -2,9 +2,8 @@
  * editor-keyboard-mutations.js
  * Sottomodulo di Editor.
  * Responsabilità: Intercettazione di tasti che distruggono o creano nodi complessi
- * FIX DOM: Modifiche in handleBulkWidgetDeletion per impedire l'autodistruzione del JSON di Sistema (SYS_PROPERTIES_DB)
- * FIX ENTER: L'andata a capo nei blocchi di codice ora usa l'estrattore puro per mappare il cursore esattamente in griglia senza salti anomali.
- * FIX CARET: Aggiunto clamping matematico in handleEnterKey per prevenire la scomparsa del cursore dietro il BR strutturale a fine blocco.
+ * FIX CANCELLAZIONE WIDGET INTERNI: Aggiunto controllo di identità tra widget corrente 
+ * e widget bersaglio per permettere l'uso dei tasti Canc e Backspace all'interno delle aree editabili (Es. Colonne).
  */
 
 Object.assign(Editor, {
@@ -264,6 +263,8 @@ Object.assign(Editor, {
         const range = selection.getRangeAt(0);
         let container = range.startContainer;
 
+        const currentWidget = container.nodeType === 3 ? container.parentNode.closest('.adv-widget-shell') : container.closest('.adv-widget-shell');
+
         if (container.nodeType === 3 && WidgetManager.isProtectedBlock(container.parentNode) && !WidgetManager.isInsideEditableWidgetArea(container.parentNode)) return;
         if (container.closest && WidgetManager.isProtectedBlock(container) && !WidgetManager.isInsideEditableWidgetArea(container)) return;
 
@@ -330,6 +331,14 @@ Object.assign(Editor, {
             while (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim() === '') prevNode = prevNode.previousSibling;
 
             if (prevNode && WidgetManager.isProtectedBlock(prevNode)) {
+                
+                // LA CORREZIONE: Se siamo dentro a un widget e il nodo precedente appartiene
+                // allo stesso widget, lasciamo che il browser faccia il suo lavoro nativo.
+                const targetWidget = prevNode.closest('.adv-widget-shell');
+                if (currentWidget && targetWidget && currentWidget === targetWidget) {
+                    return; 
+                }
+
                 e.preventDefault();
                 
                 if (isEmptyBlock) {
@@ -347,7 +356,7 @@ Object.assign(Editor, {
                     return;
                 }
 
-                const shell = prevNode.closest('.adv-widget-shell') || prevNode;
+                const shell = targetWidget || prevNode;
                 if (shell) {
                     if (shell.classList.contains('adv-widget-selected')) {
                         Editor.safeDeleteWidget(shell);
@@ -383,15 +392,27 @@ Object.assign(Editor, {
         let container = range.startContainer;
         let block = container.nodeType === 3 ? container.parentNode.closest('p, div, li, h1, h2, h3') : (container.closest ? container.closest('p, div, li, h1, h2, h3') : null);
         
+        const currentWidget = container.nodeType === 3 ? container.parentNode.closest('.adv-widget-shell') : container.closest('.adv-widget-shell');
+
         if (block) {
             let isAtEnd = false;
+            let nextNodeForWidgetCheck = null;
             
             if (container.nodeType === 3 && range.startOffset === container.length) {
                 const walker = document.createTreeWalker(document.getElementById('noteContent'), NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null, false);
                 walker.currentNode = container;
                 let nextNode = walker.nextNode();
                 while (nextNode && nextNode.nodeType === 3 && nextNode.textContent.trim() === '') nextNode = walker.nextNode();
-                if (nextNode && WidgetManager.isProtectedBlock(nextNode)) isAtEnd = true;
+                
+                // Se è un a capo, lascialo gestire al browser
+                if (nextNode && nextNode.nodeName === 'BR') {
+                    return; 
+                }
+
+                if (nextNode && WidgetManager.isProtectedBlock(nextNode)) {
+                    isAtEnd = true;
+                    nextNodeForWidgetCheck = nextNode;
+                }
             } 
             else if (container.nodeType !== 3 && range.startOffset >= container.childNodes.length - 1) {
                 isAtEnd = true;
@@ -401,10 +422,17 @@ Object.assign(Editor, {
             if (isEmptyBlock) isAtEnd = true;
 
             if (isAtEnd) {
-                let nextNode = block.nextElementSibling;
+                let nextNode = nextNodeForWidgetCheck || block.nextElementSibling;
                 while (nextNode && nextNode.nodeType === 3 && nextNode.textContent.trim() === '') nextNode = nextNode.nextSibling;
 
                 if (nextNode && WidgetManager.isProtectedBlock(nextNode)) {
+                    
+                    // LA CORREZIONE: Stesso principio del Backspace
+                    const targetWidget = nextNode.closest('.adv-widget-shell');
+                    if (currentWidget && targetWidget && currentWidget === targetWidget) {
+                        return; 
+                    }
+
                     e.preventDefault();
                     
                     if (isEmptyBlock) {
@@ -422,7 +450,7 @@ Object.assign(Editor, {
                         return;
                     }
 
-                    const shell = nextNode.closest('.adv-widget-shell') || nextNode;
+                    const shell = targetWidget || nextNode;
                     if (shell) {
                         if (shell.classList.contains('adv-widget-selected')) {
                             Editor.safeDeleteWidget(shell);
