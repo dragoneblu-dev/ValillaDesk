@@ -1,13 +1,14 @@
 Manual.registerSection(
     'sec-3',
-    '3. Collegamenti, Transclusion e Auditing (Backlinks)',
+    '3. Collegamenti, Transclusion e Video',
     `<p>Collegare le informazioni è vitale per un sistema di Personal Knowledge Management (PKM).</p>
     
     <h4>Tipi di Link Standard (🔗)</h4>
     <ul>
+        <li><b>Link Interni (Innesco Rapido):</b> Digita <kbd>[[</kbd> ovunque nell'editor per aprire istantaneamente il pannello di ricerca delle tue note. Puoi collegare una parola a un'altra nota intera, oppure a uno specifico "Titolo/Capitolo" (Ancora) al suo interno.</li>
         <li><b>Link Esterni:</b> I classici collegamenti a siti web (es. Google).</li>
-        <li><b>Link Interni:</b> Collega una parola a un'altra nota, o a uno specifico "Titolo/Capitolo".</li>
         <li><b>Link a File Locali (📁) e Visualizzatore:</b> Inserisci il percorso di un file del tuo PC (es. <code>C:\\Logs\\error.log</code>). L'app genererà un <b>Visualizzatore Interno</b> che aggira i blocchi del browser permettendoti di leggere e cercare (Trova e Sostituisci) dentro file di log testuali! Se inserisci un <i>percorso relativo</i> (es. <code>Documenti/file.txt</code>), l'app lo auto-caricherà leggendolo direttamente dalla cartella del Workspace.</li>
+        <li><b>Video YouTube (▶️):</b> Dal pannello Inserisci Collegamento, puoi incollare l'URL di un video YouTube. L'applicazione genererà un iframe isolato e sicuro permettendoti di riprodurre il video senza mai uscire dalla nota.</li>
     </ul>
 
     <h4>Pannello Info, Auditing e Backlinks (ℹ️)</h4>

@@ -5,6 +5,7 @@
  * FIX FILTRI: Inserita la pseudo-colonna "SYS_JS_FORMULA" per abilitare condizioni personalizzate.
  * FIX UI FORMULE: Qualsiasi azione di tipo formula (es. set_start_formula) ora scatena
  * il layout espanso (verticale) con la Textarea maggiorata e la preview Live.
+ * REFACTOR COLORI: Astratta la generazione della Palette Cromatico-Condizionale per ridurre il payload HTML e garantire uniformità.
  */
 
 const AutomationUIBuilder = {
@@ -24,6 +25,23 @@ const AutomationUIBuilder = {
             });
         }
         return dbList;
+    },
+
+    // HELPER: Genera la griglia dei colori per la colorazione delle righe (DRY)
+    getColorSwatchesHTML: (currentValue, onChangeScript) => {
+        let html = `<div style="display:flex; gap:6px; flex-wrap:wrap; background:var(--bg-color); padding:8px; border-radius:6px; border:1px solid var(--border-color); width:100%;">`;
+        
+        const noColorSel = (!currentValue || currentValue === 'none') ? 'outline: 2px solid var(--text-primary); transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2);' : '';
+        html += `<div class="color-swatch bg-none" style="width: 24px; height: 24px; border-radius: 4px; cursor: pointer; ${noColorSel}" title="Nessun colore" onclick="${onChangeScript.replace('$$VAL$$', 'none')}"></div>`;
+        
+        const pillColors = ['hl-c1', 'hl-c2', 'hl-c3', 'hl-c4', 'hl-c5', 'hl-c6', 'hl-c7', 'hl-c8', 'hl-c9', 'hl-c10'];
+        pillColors.forEach(c => {
+            const isSel = currentValue === c ? 'outline: 2px solid var(--text-primary); transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2);' : '';
+            html += `<div class="color-option ${c}" style="width: 24px; height: 24px; border-radius: 4px; cursor: pointer; ${isSel}" title="${c}" onclick="${onChangeScript.replace('$$VAL$$', c)}"></div>`;
+        });
+        
+        html += `</div>`;
+        return html;
     },
 
     // Costruisce l'intera Action Block Card per i Pulsanti
@@ -241,18 +259,10 @@ const AutomationUIBuilder = {
                     
                     let valInputHTML = '';
 
-                    // Inserimento dinamico delle palette colore e del Selettore Fissa/Formula
                     if (act.type === 'color_row') {
-                        let colorSwatches = `<div style="display:flex; gap:6px; flex-wrap:wrap; background:var(--bg-color); padding:8px; border-radius:6px; border:1px solid var(--border-color); width:100%;">`;
-                        const noColorSel = (!act.value || act.value === 'none') ? 'outline: 2px solid var(--text-primary); transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2);' : '';
-                        colorSwatches += `<div class="color-swatch bg-none" style="width: 24px; height: 24px; border-radius: 4px; cursor: pointer; ${noColorSel}" title="Nessun colore" onclick="${changeCallback}('value', 'none'); ${callbacks.onRefresh}();"></div>`;
-                        
-                        const pillColors = ['hl-c1', 'hl-c2', 'hl-c3', 'hl-c4', 'hl-c5', 'hl-c6', 'hl-c7', 'hl-c8', 'hl-c9', 'hl-c10'];
-                        pillColors.forEach(c => {
-                            const isSel = act.value === c ? 'outline: 2px solid var(--text-primary); transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2);' : '';
-                            colorSwatches += `<div class="color-option ${c}" style="width: 24px; height: 24px; border-radius: 4px; cursor: pointer; ${isSel}" title="${c}" onclick="${changeCallback}('value', '${c}'); ${callbacks.onRefresh}();"></div>`;
-                        });
-                        colorSwatches += `</div>`;
+                        // LA MODIFICA: Utilizzo dell'helper centrale per i colori
+                        const changeScript = `${changeCallback}('value', '$$VAL$$'); ${callbacks.onRefresh}();`;
+                        const colorSwatches = AutomationUIBuilder.getColorSwatchesHTML(act.value, changeScript);
 
                         // Analisi del valore attuale (Se inizia con '=' è una formula JS)
                         const rawOp = act.value2 !== undefined && act.value2 !== '' ? String(act.value2) : '100';

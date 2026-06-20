@@ -17,10 +17,10 @@ Manual.registerSection(
     <h4>Come strutturare i Blocchi Logici (Macro):</h4>
     <p>Nella seconda metà del pannello, aggiungi i "Blocchi Azione" che verranno eseguiti in sequenza. Per ogni blocco definisci:</p>
     <ul>
-        <li><b>Database Bersaglio:</b> La tabella su cui il pulsante andrà a operare (o "Questa Riga" se è una colonna pulsante).</li>
-        <li><b>Tipo di Azione:</b> Puoi scegliere tra <code>Modifica (UPDATE)</code> per alterare righe esistenti, <code>Aggiungi Singola Riga (INSERT)</code>, <code>Copia Righe (INSERT_SELECT)</code> per clonare righe in massa da un altro DB o <code>Invia Email (mailto)</code>.</li>
+        <li><b>Database Bersaglio (O "Questa Riga"):</b> La tabella su cui il pulsante andrà a operare. <br><span style="color:var(--accent-color); font-size:0.85em;">💡 <b>Pro-Tip:</b> Se configuri il pulsante come *Colonna* di un database invece che come barra separata, vedrai l'opzione <code>[Questa Riga]</code>. Invece di lanciare la modifica su tutto il database, l'azione verrà circoscritta e lanciata *solamente* per la riga esatta in cui l'utente ha premuto il pulsante.</span></li>
+        <li><b>Tipo di Azione:</b> Puoi scegliere tra <code>Modifica (UPDATE)</code> per alterare righe esistenti, <code>Aggiungi Singola Riga (INSERT)</code>, <code>Copia Righe (INSERT_SELECT)</code> per clonare in blocco intere righe da un altro DB o <code>Invia Email (mailto)</code>.</li>
         <li><b>Condizioni (WHERE):</b> I filtri che determinano <i>quali</i> righe andranno modificate. Se non metti filtri, il pulsante opererà sull'intero database. Supporta anche la <b>Formula JS</b> per condizioni incrociate!</li>
-        <li><b>Azione (SET):</b> Le modifiche vere e proprie che verranno scritte nelle celle.</li>
+        <li><b>Azione (SET):</b> Le modifiche vere e proprie che verranno scritte nelle celle (o estratte con la funzione <code>[Copia] Valore da Colonna Origine</code> nel caso di un Travaso dati INSERT_SELECT).</li>
     </ul>
 
     <div style="background: rgba(0,0,0,0.03); padding: 15px; border-radius: 6px; border: 1px solid var(--border-color); margin-top: 15px;">

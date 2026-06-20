@@ -37,8 +37,10 @@ Manual.registerSection(
             <ul>
                 <li><b>Tipi di Grafico:</b> A Barre, Barre Orizzontali, Linea, Ciambella (Doughnut) o Torta (Pie).</li>
                 <li><b>Palette Cromatiche:</b> Puoi scegliere tra temi automatici: <i>Predefinita, Pastello, Vibrante, Oceano, Tramonto</i>.</li>
-                <li><b>Raggruppa a blocchi (Stacking):</b> Se hai configurato esattamente <i>due raggruppamenti</i> (Asse X), attivando questa spunta il grafico a barre impilerà i valori del secondo gruppo sopra quelli del primo, creando un grafico "Stacked" professionale.</li>
-                <li><b>Extra:</b> Puoi spostare la posizione della legenda o attivare le "Data Labels" per mostrare i numeri direttamente sopra le barre o le fette della torta.</li>
+                <li><b>Opzioni Strutturali Avanzate:</b> 
+                    <br>- <b>Raggruppa a blocchi (Stacking):</b> Se hai configurato esattamente <i>due raggruppamenti</i> (Asse X), il grafico a barre impilerà i valori del secondo gruppo sopra quelli del primo.
+                    <br>- <b>Etichette Dati (Data Labels):</b> Puoi attivare la spunta per sovrimprimere i valori calcolati direttamente in cima alla barra o dentro la fetta di torta per una lettura più immediata senza passare il mouse.
+                    <br>- <b>Totale al Centro:</b> Sui grafici a Ciambella, puoi attivare una spunta per calcolare la grande Somma Globale di tutte le fette e piazzarla a caratteri cubitali nel buco centrale del grafico!</li>
             </ul>
         </li>
     </ol>`

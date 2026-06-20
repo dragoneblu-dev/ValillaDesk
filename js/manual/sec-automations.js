@@ -6,12 +6,13 @@ Manual.registerSection(
     <h4>Come funzionano? Struttura Trigger & Azione</h4>
     <p>Ogni automazione è composta da un blocco <b>QUANDO (Trigger)</b> e da un blocco <b>ALLORA (Azioni)</b>. Il sistema valuta le regole nell'esatto momento in cui modifichi o crei una riga della tabella.</p>
     <ul>
-        <li><b>Priorità di Esecuzione:</b> Le automazioni vengono eseguite in sequenza dall'alto verso il basso. Puoi trascinarle usando l'icona ⠿ per deciderne l'ordine. <i>(Nota bene: se l'Auto 1 innesca una modifica, il sistema controllerà anche se l'Auto 2 deve scattare in base a quella nuova modifica!).</i></li>
+        <li><b>Protezione Anti-Loop (Call-Stack Limiter):</b> Il motore logico è intelligente. Se crei un'automazione A che innesca una modifica che fa scattare l'automazione B che a sua volta scatena la A all'infinito, l'engine <b>bloccherà l'esecuzione dopo 10 ricorsioni</b>, salvando il browser da un crash (Freeze). Se un'automazione sembra fermarsi a metà, potresti aver creato un loop infinito!</li>
         <li><b>Eventi di Sistema:</b> Puoi scegliere di reagire a specifici eventi universali:
             <ul>
                 <li><b>⚡ Creazione Nuova Riga</b> (scatta appena aggiungi una riga).</li>
                 <li><b>⚡ Qualsiasi Modifica Dati</b> (scatta appena tocchi qualunque cella).</li>
                 <li><b>🌐 Modifica in altro Database (Cross-DB):</b> Scatta se viene modificato un record in un DB *Diverso* (utile per aggiornare ricalcoli di giacenze quando aggiungi una fattura).</li>
+                <li><b>👁️ Al Caricamento (On-Load):</b> Esegue l'azione silenziosamente non appena apri la nota e la tabella viene disegnata a schermo. Ottimo per aggiornare stati dinamici ("In Ritardo") senza che l'utente debba toccare nulla.</li>
                 <li><b>⏰ Orario Programmato (Cron-job):</b> Il motore interno controlla ogni 60 secondi l'orario del PC e può far scattare le azioni in automatico! (Vedi sotto).</li>
             </ul>
         </li>

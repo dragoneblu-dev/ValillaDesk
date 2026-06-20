@@ -2,6 +2,8 @@
  * AdvancedTableCalendar.js
  * Modulo per la Vista Calendario dei Database.
  * FIX COLONNE NASCOSTE: L'etichetta dell'evento è ora dinamicamente assegnata alla PRIMA COLONNA VISIBILE e non hardcodata.
+ * FEAT UX: Nomi dei mesi cliccabili nella Vista Annuale per navigare rapidamente alla Vista Mensile corrispondente.
+ * FIX ALLINEAMENTO: Risolto bug delle Regex in _cleanFormulaRendering che lasciava Select e Pulsanti disallineati a sinistra nelle Card temporali.
  */
 
 const AdvancedCalendar = {
@@ -87,6 +89,15 @@ const AdvancedCalendar = {
         if (e) e.stopPropagation();
         let state = AdvancedTable.getState(tableId);
         state.calendarMode = 'day';
+        state.calendarFocusDate = ms;
+        AdvancedTable.setState(tableId, state);
+        AdvancedTable.renderTable(tableId);
+    },
+
+    expandMonthView: (e, tableId, ms) => {
+        if (e) e.stopPropagation();
+        let state = AdvancedTable.getState(tableId);
+        state.calendarMode = 'month';
         state.calendarFocusDate = ms;
         AdvancedTable.setState(tableId, state);
         AdvancedTable.renderTable(tableId);
@@ -344,12 +355,27 @@ const AdvancedCalendar = {
         return tooltipHtml.replace(/"/g, '&quot;'); 
     },
 
+    /**
+     * CLEAN FORMULA RENDERING (CSS Injection)
+     * Riscrive l'HTML generato da renderCell() per forzare gli allineamenti a destra 
+     * e sovrascrivere i comportamenti di default (flex-start/center) delle tabelle.
+     */
     _cleanFormulaRendering: (htmlStr) => {
-        let cleaned = htmlStr.replace(/class="adv-select-container"/g, 'class="adv-select-container" style="justify-content:flex-end; width:100%;"');
-        cleaned = cleaned.replace(/class="adv-cell-text"/g, 'class="adv-cell-text" style="text-align:right; width:100%;"');
-        cleaned = cleaned.replace(/class="adv-cell-number"/g, 'class="adv-cell-number" style="text-align:right; width:100%;"');
+        let cleaned = htmlStr;
+        
+        // 1. Forza i flexbox generici a spostarsi a destra (es. Bottoni)
+        cleaned = cleaned.replace(/justify-content:\s*flex-start/gi, 'justify-content: flex-end');
+        cleaned = cleaned.replace(/justify-content:\s*center/gi, 'justify-content: flex-end');
+        
+        // 2. Inietta esplicitamente l'allineamento sulle classi di base usando Regex tolleranti agli spazi
+        cleaned = cleaned.replace(/class=["']([^"']*?\badv-select-container\b[^"']*)["']/g, 'class="$1" style="justify-content:flex-end; width:100%; margin:0;"');
+        cleaned = cleaned.replace(/class=["']([^"']*?\badv-cell-text\b[^"']*)["']/g, 'class="$1" style="text-align:right; width:100%; margin:0;"');
+        cleaned = cleaned.replace(/class=["']([^"']*?\badv-cell-number\b[^"']*)["']/g, 'class="$1" style="text-align:right; width:100%; margin:0;"');
+        
+        // 3. Pulisce eventuali sfondi ereditati dalla griglia ReadOnly
         cleaned = cleaned.replace(/background:\s*rgba\(0,\s*0,\s*0,\s*0\.02\);?/gi, '');
         cleaned = cleaned.replace(/adv-cell-readonly/g, '');
+        
         return cleaned;
     },
 
@@ -568,7 +594,10 @@ const AdvancedCalendar = {
                 if (startOffset === -1) startOffset = 6;
 
                 html += `<div style="border: 1px solid var(--border-color); border-radius: 6px; background: var(--sidebar-bg); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">`;
-                html += `<div style="text-align:center; font-weight:bold; font-size: 0.9rem; padding: 6px; background: rgba(0,0,0,0.03); border-bottom: 1px solid var(--border-color); color: var(--accent-color);">${monthNames[m]}</div>`;
+                
+                const targetMs = firstDay.getTime();
+                html += `<div onclick="AdvancedCalendar.expandMonthView(event, '${tableId}', ${targetMs})" title="Passa alla vista Mese" style="text-align:center; font-weight:bold; font-size: 0.9rem; padding: 6px; background: rgba(0,0,0,0.03); border-bottom: 1px solid var(--border-color); color: var(--accent-color); cursor: pointer; transition: background 0.2s, opacity 0.2s;" onmouseenter="this.style.opacity='0.7'" onmouseleave="this.style.opacity='1'">${monthNames[m]}</div>`;
+                
                 html += `<div style="display:grid; grid-template-columns: repeat(7, 1fr); text-align:center; font-size:0.6rem; color:var(--text-secondary); padding: 4px 0; border-bottom: 1px solid var(--border-color);">
                             <div>L</div><div>M</div><div>M</div><div>G</div><div>V</div><div>S</div><div>D</div>
                          </div>`;
@@ -676,9 +705,10 @@ const AdvancedCalendar = {
                         
                         const safePColName = String(pCol.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         
+                        // FIX: Aggiunto display:flex e justify-content:flex-end al wrapper interno per incollare Select e Bottoni a destra
                         extraPropsHtml += `<div style="display:flex; justify-content:space-between; align-items:center; gap:5px; font-size:0.65rem;">
                                             <span style="opacity:0.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40%;">${safePColName}</span>
-                                            <div style="flex:1; text-align:right; overflow:hidden;">${rendered}</div>
+                                            <div style="flex:1; text-align:right; overflow:hidden; display:flex; justify-content:flex-end; align-items:center;">${rendered}</div>
                                            </div>`;
                     }
                  });
@@ -756,9 +786,10 @@ const AdvancedCalendar = {
                         
                         const safePColName = String(pCol.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         
+                        // FIX: Aggiunto display:flex e justify-content:flex-end al wrapper interno
                         extraPropsHtml += `<div style="display:flex; justify-content:space-between; align-items:center; gap:5px; font-size:0.65rem;">
                                             <span style="opacity:0.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40%;">${safePColName}</span>
-                                            <div style="flex:1; text-align:right; overflow:hidden;">${rendered}</div>
+                                            <div style="flex:1; text-align:right; overflow:hidden; display:flex; justify-content:flex-end; align-items:center;">${rendered}</div>
                                            </div>`;
                     }
                 });

@@ -3,6 +3,7 @@
  * INTERFACCIA UTENTE: Rendering Pannello (Drawer), Builder, Eventi Drag&Drop.
  * FIX FILTRI: Aggiunta opzione SYS_JS_FORMULA per creare Trigger dinamici.
  * FIX UI FORMULE: Qualsiasi azione di tipo formula ora apre la Textarea estesa.
+ * REFACTOR: Usa AutomationUIBuilder per generare i selettori di Colore e abbattere duplicazioni.
  */
 
 Object.assign(AdvancedAutomations, {
@@ -594,16 +595,10 @@ Object.assign(AdvancedAutomations, {
                             <input type="text" class="modern-input" style="flex:1; padding:6px; font-size:0.85rem;" value="${String(a.value2 || '').replace(/"/g, '&quot;')}" placeholder="Nome della nuova riga (Titolo)..." oninput="AdvancedAutomations._updateAction(event, ${idx}, 'value2', this.value)">
                         `;
                     } else if (a.type === 'color_row') {
-                        let colorSwatches = `<div style="display:flex; gap:6px; flex-wrap:wrap; background:var(--bg-color); padding:8px; border-radius:6px; border:1px solid var(--border-color); width:100%;">`;
-                        const noColorSel = (!a.value || a.value === 'none') ? 'outline: 2px solid var(--text-primary); transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2);' : '';
-                        colorSwatches += `<div class="color-swatch bg-none" style="width: 24px; height: 24px; border-radius: 4px; cursor: pointer; ${noColorSel}" title="Nessun colore" onclick="AdvancedAutomations._updateAction(event, ${idx}, 'value', 'none'); AdvancedAutomations._renderBuilder('${tableId}');"></div>`;
                         
-                        const pillColors = ['hl-c1', 'hl-c2', 'hl-c3', 'hl-c4', 'hl-c5', 'hl-c6', 'hl-c7', 'hl-c8', 'hl-c9', 'hl-c10'];
-                        pillColors.forEach(c => {
-                            const isSel = a.value === c ? 'outline: 2px solid var(--text-primary); transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.2);' : '';
-                            colorSwatches += `<div class="color-option ${c}" style="width: 24px; height: 24px; border-radius: 4px; cursor: pointer; ${isSel}" title="${c}" onclick="AdvancedAutomations._updateAction(event, ${idx}, 'value', '${c}'); AdvancedAutomations._renderBuilder('${tableId}');"></div>`;
-                        });
-                        colorSwatches += `</div>`;
+                        // LA MODIFICA: Utilizzo dell'helper centrale per i colori
+                        const changeScript = `AdvancedAutomations._updateAction(event, ${idx}, 'value', '$$VAL$$'); AdvancedAutomations._renderBuilder('${tableId}');`;
+                        const colorSwatches = AutomationUIBuilder.getColorSwatchesHTML(a.value, changeScript);
 
                         // IMPLEMENTAZIONE OPACITA' FISSA/FORMULA
                         const rawOp = a.value2 !== undefined && a.value2 !== '' ? String(a.value2) : '100';

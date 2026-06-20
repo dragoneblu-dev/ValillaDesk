@@ -209,12 +209,8 @@ const AdvancedBoard = {
                 }
                 tVal = String(tVal).replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-                // LOG BOMB 1: Mousedown handler per vedere chi viene cliccato
-                const mousedownLog = `onmousedown="console.log('🟨 [BOARD-MOUSEDOWN] Target:', event.target.tagName, 'Class:', event.target.className, 'ContentEditable:', event.target.isContentEditable)"`;
-
                 html += `
                     <div class="adv-board-card" draggable="${isEdit ? 'true' : 'false'}" 
-                         ${mousedownLog}
                          ondragstart="AdvancedBoard.onDragStart(event, '${row.id}', '${tableId}')"
                          ondragend="AdvancedBoard.onDragEnd(event)"
                          style="cursor:${isEdit ? 'grab' : 'pointer'};">
@@ -286,12 +282,6 @@ const AdvancedBoard = {
     },
 
     onDragStart: (e, rowId, tableId) => {
-        // --- LOG BOMB 2: Analisi profonda del DragStart ---
-        console.group(`🟪 [BOARD-DRAG-START] Innesco Drag & Drop per Riga: ${rowId}`);
-        console.log(`1. Target Tag:`, e.target.tagName);
-        console.log(`2. Target Class:`, e.target.className);
-        console.log(`3. Target isContentEditable:`, e.target.isContentEditable);
-        console.log(`4. Event defaultPrevented:`, e.defaultPrevented);
 
         // NESSUN FIREWALL (Li ho tolti apposta). Voglio vedere se arriva fino alla fine del blocco
         // o se esplode in mezzo.
@@ -333,9 +323,6 @@ const AdvancedBoard = {
         }, 0);
 
         document.addEventListener('dragover', AdvancedBoard.updateGhostPosition);
-        
-        console.log(`🟪 [BOARD-DRAG-START] Fine del blocco di preparazione eseguito con successo.`);
-        console.groupEnd();
     },
 
     updateGhostPosition: (e) => {
@@ -346,7 +333,6 @@ const AdvancedBoard = {
     },
 
     onDragEnd: (e) => {
-        console.log(`🟩 [BOARD-DRAG-END] Drag terminato o abortito dal browser.`);
         e.currentTarget.style.opacity = '1';
         e.currentTarget.style.border = '1px solid var(--border-color)';
         e.currentTarget.style.backgroundColor = 'var(--bg-color)';
@@ -373,7 +359,6 @@ const AdvancedBoard = {
 
     onDrop: (e, tableId, newGroupValue) => {
         e.preventDefault();
-        console.log(`🟩 [BOARD-DROP] Rilasciato su gruppo: ${newGroupValue || 'Senza Stato'}`);
         
         const target = e.currentTarget;
         target.style.backgroundColor = 'transparent';

@@ -14,25 +14,26 @@ Manual.registerSection(
     <p>Le tabelle semplici si comportano come quelle di un word processor classico (es. Microsoft Word). Cliccando all'interno di una cella, appariranno dei comandi fluttuanti vicino al cursore e un ingranaggio (⚙️) per le opzioni globali.</p>
 
     <ul>
+        <li><b>Spostamento Fisico di Righe e Colonne:</b> Quando il cursore è in una cella, osserva i bordi superiore e sinistro della tabella. Appariranno delle maniglie (⋮ e ⋯) subito fuori dalla tabella. Puoi <b>afferrarle col mouse e trascinarle</b> per spostare un'intera riga o scambiare due colonne tra loro istantaneamente!</li>
         <li><b>Layout e Ridimensionamento (⚙️):</b> Dal menu principale della tabella puoi scegliere 3 comportamenti strutturali:
             <ul>
                 <li><b>🤖 Adattivo (Testo):</b> Le colonne si stringono o allargano automaticamente in base alla lunghezza della parola più lunga al loro interno.</li>
-                <li><b>% Percentuale (Schermo):</b> La tabella occupa il 100% dello schermo. Se trascini i bordi delle colonne (nella prima riga), queste si ridimensioneranno in percentuale (es. 30% - 70%). Perfetto per documenti responsivi.</li>
-                <li><b>⬄ Libera (Pixel):</b> Sgancia la tabella dai limiti dello schermo. Puoi allargare le colonne all'infinito e apparirà una barra di scorrimento orizzontale. Ideale per griglie con moltissime colonne.</li>
+                <li><b>% Percentuale (Schermo):</b> La tabella occupa il 100% dello schermo. Se trascini i bordi delle colonne, queste si ridimensioneranno in percentuale (es. 30% - 70%). Perfetto per documenti responsivi.</li>
+                <li><b>⬄ Libera (Pixel):</b> Sgancia la tabella dai limiti dello schermo. Puoi allargare le colonne all'infinito e apparirà una barra di scorrimento orizzontale.</li>
             </ul>
         </li>
         <li><b>Selezione Multipla Avanzata:</b> Clicca su una cella e trascina il mouse per selezionare un blocco di celle. Se tieni premuto <b>CTRL (o Cmd) + Click</b>, puoi selezionare <i>celle sparse</i> non adiacenti!</li>
-        <li><b>Il Menu Fluttuante:</b> Quando selezioni una o più celle, apparirà un menu pop-up che ti permette di:
+        <li><b>Il Menu Fluttuante:</b> Quando selezioni una o più celle, apparirà un menu pop-up (Ghost Mode) che ti permette di:
             <ul>
                 <li>Applicare il <b>Grassetto</b> in massa.</li>
                 <li>Cambiare l'<b>Allineamento</b> del testo (Sinistra, Centro, Destra).</li>
                 <li>Applicare un <b>Colore di Sfondo</b> specifico a quelle celle (es. per evidenziare totali o criticità).</li>
                 <li><b>Unire (Merge) e Dividere (Split) le celle:</b> Seleziona più celle contigue e clicca sull'icona di unione per fonderle (Rowspan/Colspan).</li>
-                <li><b>Copia per Excel (📋):</b> Copia l'esatta selezione negli appunti in formato compatibile (TSV) pronto per essere incollato su Excel o Google Sheets.</li>
+                <li><b>Copia per Excel (📋):</b> Copia l'esatta selezione negli appunti in formato (TSV) pronto per Excel.</li>
             </ul>
         </li>
         <li><b>Import/Export CSV:</b> Dal menu (⚙️) puoi aprire un editor di testo per incollare dati grezzi (CSV) e generare istantaneamente la tabella, oppure modificare in blocco i dati esistenti.</li>
-        <li><b>Conversione Magica:</b> Hai creato una tabella semplice e ti rendi conto che ti servono filtri e formule? Clicca su "Converti in Database"! Il sistema assorbirà i testi e trasformerà l'HTML statico in un Database RDBMS funzionante. <i>(Nota: le celle unite verranno perse).</i></li>
+        <li><b>Conversione Magica:</b> Hai creato una tabella semplice e ti rendi conto che ti servono filtri e formule? Clicca su "Converti in Database"! Il sistema assorbirà i testi e trasformerà l'HTML statico in un Database funzionante. <i>(Nota: le celle unite verranno perse).</i></li>
     </ul>
 
     <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 30px 0;">
@@ -77,6 +78,7 @@ Manual.registerSection(
     <ul>
         <li><b>Modalità Dettaglio Record (Focus):</b> Cliccando due volte su una riga (o sull'icona della lente a fine riga), si aprirà un elegante cassetto laterale destro (Drawer) che ti mostrerà tutti i campi di quella riga in formato modulo (dall'alto verso il basso). Ideale per compilare tabelle con 30+ colonne senza dover scrollare orizzontalmente! Se il testo di una cella è lunghissimo, nel Drawer diventerà una spaziosa Textarea.</li>
         <li><b>Troncamento Testo (Text Clamp):</b> Se hai incollato un intero paragrafo in una cella, la riga diventerà altissima e fastidiosa. Dal menu (⋮) del Database, vai su "Altezza Righe Testo" e seleziona "Max 1 riga" o "Max 2 righe". L'app taglierà visivamente il testo con dei puntini di sospensione (...) mantenendo la tabella ordinata. Il testo completo rimane intatto e visibile passando col mouse o aprendo il Dettaglio Record.</li>
+        <li><b>Visibilità Dinamica Colonne:</b> Dal menu opzioni del Database, sotto "Visualizza Campo" o "Campi Nascosti", puoi accendere e spegnere le colonne. Questa impostazione <i>è legata alla singola vista</i>. Puoi avere la colonna "ID" visibile nella tabella, ma nascosta nella vista Kanban.</li>
         <li><b>Colorazione Condizionale (🎨):</b> Vuoi che le fatture non pagate si colorino di rosso? Dal menu (⋮) del Database seleziona "Colorazione Condizionale". Si aprirà un builder dove potrai creare regole dinamiche (Es. <i>Se "Stato" = "Insoluto" E "Scadenza" < "Oggi", allora Sfondo = Rosso</i>). 
             <br><b>Feature Pro: Opacità Dinamica!</b> Nel selettore colore, puoi impostare l'opacità dello sfondo al 50%, oppure usare una Formula JS per farla calcolare dai dati! (Es. Opacità = <code>riga["Percentuale Completamento"]</code> per creare barre di avanzamento termiche sulle righe!).</li>
         <li><b>Row Selector Globale (Eliminazione Massiva):</b> Se passi il mouse sull'estrema sinistra di una riga, vedrai comparire un quadratino fluttuante. Cliccandolo, selezionerai la riga. Selezionane diverse, e in basso allo schermo apparirà un pulsante rosso per l'eliminazione massiva (Batch Delete).</li>

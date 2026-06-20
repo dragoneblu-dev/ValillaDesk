@@ -5,6 +5,7 @@
  * FIX UX: Aggiunto pulsante rapido per il Grassetto coerente con la toolbar principale.
  * FEATURE CTRL+CLICK: Supporto per la selezione multipla non adiacente (Sparse Selection).
  * FIX DRAWER CONFLICT: Il motore di selezione ignora totalmente le tabelle presenti nel pannello laterale (Drawer).
+ * REFACTOR: Rimozione di asset SVG hardcoded. Uso centralizzato di Icons.js.
  */
 
 Object.assign(TableManager.Selection, {
@@ -439,27 +440,20 @@ Object.assign(TableManager.Selection, {
         popover.id = 'adv-tbl-selection-popover';
         popover.className = 'adv-floating-popover';
         
-        const svgLeft = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h12v2H3v-2zm0 5h18v2H3v-2z"/></svg>`;
-        const svgCenter = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 6h18v2H3V6zm4 5h10v2H7v-2zm-4 5h18v2H3v-2z"/></svg>`;
-        const svgRight = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 6h18v2H3V6zm6 5h12v2H9v-2zm-6 5h18v2H3v-2z"/></svg>`;
-        const svgCopy = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-        const svgMerge = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M8 12h8m-4-4v8" opacity="0.5"></path></svg>`;
-        const svgSplit = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line><line x1="3" y1="12" x2="21" y2="12"></line></svg>`;
-
         let extraButtons = '';
         if (isMulti) {
             // Se la selezione è sparsa, i pulsanti Copia/Unisci non vengono stampati.
             if (isContiguous) {
                 extraButtons = `
                     <div style="width:1px; height:16px; background:var(--border-color); margin: 0 4px;"></div>
-                    ${isMergeSafe ? `<button onclick="TableManager.Selection.mergeCells()" title="Unisci Celle Selezionate">${svgMerge}</button>` : `<button disabled style="opacity:0.3; cursor:not-allowed;" title="Azione bloccata: Unione mista di celle rischierebbe di corrompere la struttura della tabella.">${svgMerge}</button>`}
-                    <button onclick="TableManager.Selection.copySelectedAsExcel()" title="Copia selezione per Excel">${svgCopy}</button>
+                    ${isMergeSafe ? `<button onclick="TableManager.Selection.mergeCells()" title="Unisci Celle Selezionate">${Icons.merge}</button>` : `<button disabled style="opacity:0.3; cursor:not-allowed;" title="Azione bloccata: Unione mista di celle rischierebbe di corrompere la struttura della tabella.">${Icons.merge}</button>`}
+                    <button onclick="TableManager.Selection.copySelectedAsExcel()" title="Copia selezione per Excel">${Icons.clipboard}</button>
                 `;
             }
         } else if (hasSpans) {
             extraButtons = `
                 <div style="width:1px; height:16px; background:var(--border-color); margin: 0 4px;"></div>
-                <button onclick="TableManager.Selection.splitCell()" title="Dividi Celle Unite">${svgSplit}</button>
+                <button onclick="TableManager.Selection.splitCell()" title="Dividi Celle Unite">${Icons.split}</button>
             `;
         }
 
@@ -467,9 +461,9 @@ Object.assign(TableManager.Selection, {
             <button onclick="TableManager.UI.performAction('toggleBold')" title="Grassetto (Tutte le celle)"><b style="font-size:0.9rem; line-height:1;">B</b></button>
             <div style="width:1px; height:16px; background:var(--border-color); margin: 0 4px;"></div>
 
-            <button onclick="TableManager.UI.performAction('alignCell', 'text-left')" title="Allinea a Sinistra">${svgLeft}</button>
-            <button onclick="TableManager.UI.performAction('alignCell', 'text-center')" title="Allinea al Centro">${svgCenter}</button>
-            <button onclick="TableManager.UI.performAction('alignCell', 'text-right')" title="Allinea a Destra">${svgRight}</button>
+            <button onclick="TableManager.UI.performAction('alignCell', 'text-left')" title="Allinea a Sinistra">${Icons.alignLeft}</button>
+            <button onclick="TableManager.UI.performAction('alignCell', 'text-center')" title="Allinea al Centro">${Icons.alignCenter}</button>
+            <button onclick="TableManager.UI.performAction('alignCell', 'text-right')" title="Allinea a Destra">${Icons.alignRight}</button>
             
             <div style="width:1px; height:16px; background:var(--border-color); margin: 0 4px;"></div>
             

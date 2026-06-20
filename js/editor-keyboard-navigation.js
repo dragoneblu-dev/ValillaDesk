@@ -1,19 +1,28 @@
 /**
  * editor-keyboard-navigation.js
  * Sottomodulo di Editor.
- * Responsabilità: Navigazione complessa (Tabulazioni in elenchi e blocchi codice, 
- * Escape dalla formattazione, Indentazione).
+ * Responsabilità: Navigazione complessa del cursore tramite tastiera (Tabulazioni in elenchi e blocchi codice, 
+ * Escape intelligente dalla formattazione, Indentazione e Spostamenti geometrici nelle tabelle).
+ * 
  * FIX KEYBOARD NAVIGATION: Implementato un motore spaziale a Matrice 2D per il calcolo
  * esatto delle coordinate (X, Y) della griglia della tabella. Questo scavalca
- * definitivamente i bug di salto cursore generati da "colspan" e "rowspan".
- * FIX CARET ENGINE: Sostituito il calcolo dell'offset con le API Range native del browser 
- * per garantire coordinate perfette anche all'interno degli span generati dal syntax highlighter.
+ * definitivamente i bug di salto cursore generati dai tag "colspan" e "rowspan".
+ * 
+ * FIX CARET ENGINE: Sostituito il calcolo nativo dell'offset con le API Range del browser 
+ * per garantire coordinate perfette anche all'interno degli span multipli generati dal syntax highlighter.
+ * 
+ * FIX VERTICAL ESCAPE (RAYCASTING): Intercettazione del bug di rimbalzo del cursore (Bouncing Caret) 
+ * attorno agli elementi inline complessi (Snippet Copiabili). Utilizza API di Raycasting per preservare 
+ * l'allineamento orizzontale del cursore tra una riga e l'altra, o un Fallback per garantire l'uscita dal blocco.
  */
 
 Object.assign(Editor, {
 
-    // ESTRATTORE GEOMETRICO ASSOLUTO (FIX BUG SALTI CURSORE NEI COMMENTI E NEGLI SPAN)
-    // Sostituisce la versione debole che si fermava ai bordi degli Span ignorando gli offset interni
+    /**
+     * ESTRATTORE GEOMETRICO ASSOLUTO 
+     * Sostituisce la versione debole che si fermava ai bordi degli Span ignorando gli offset interni.
+     * Genera un clone temporaneo del DOM per contare matematicamente i caratteri fisici e i <br> fino al cursore.
+     */
     _getCodeOffset: (preNode, targetContainer, targetOffset) => {
         try {
             // Seleziona tutto dall'inizio del blocco PRE fino al cursore esatto
@@ -25,7 +34,7 @@ Object.assign(Editor, {
             const frag = range.cloneContents();
             let pos = 0;
             
-            // Conta in modo matematico tutti i caratteri e le andate a capo presenti
+            // Conta in modo matematico tutti i caratteri di testo e le andate a capo (<br>) presenti
             const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
             let node;
             while ((node = walker.nextNode())) {
@@ -34,14 +43,141 @@ Object.assign(Editor, {
             }
             return pos;
         } catch (e) {
-            console.error("🔴 [CARET-DEBUG] Errore critico nel calcolo offset cursore:", e);
+            //console.error("🔴 [CARET-DEBUG] Errore critico nel calcolo offset cursore:", e);
             return 0;
         }
     },
 
+    /**
+     * SNIPPET VERTICAL ESCAPE (Raycast Engine)
+     * Previene il bug del browser nativo che fa rimbalzare il cursore in un loop infinito 
+     * dentro/fuori lo snippet copiabile quando si preme ArrowUp o ArrowDown.
+     */
+    _handleSnippetVerticalEscape: (e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false;
+        if (e.shiftKey) return false; 
+
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return false;
+
+        const range = sel.getRangeAt(0);
+        let node = range.startContainer;
+        let parent = node.nodeType === 3 ? node.parentNode : node;
+
+        // Si attiva SOLO se il cursore è adiacente o dentro uno snippet copiabile
+        const isNearSnippet = parent.closest('.adv-copy-snippet') || 
+                              (node.nextSibling && node.nextSibling.classList && node.nextSibling.classList.contains('adv-copy-snippet')) || 
+                              (node.previousSibling && node.previousSibling.classList && node.previousSibling.classList.contains('adv-copy-snippet'));
+
+        if (!isNearSnippet) return false;
+
+        e.preventDefault(); 
+
+        // 1. Calcola la posizione X/Y attuale esatta
+        let caretRect = range.getBoundingClientRect();
+        if (caretRect.width === 0 && caretRect.height === 0) {
+            // Fix per ricavare la posizione se siamo in un punto del DOM senza bounding box apparente
+            const span = document.createElement('span');
+            span.appendChild(document.createTextNode('\u200B'));
+            range.insertNode(span);
+            caretRect = span.getBoundingClientRect();
+            span.remove();
+        }
+
+        const currentX = caretRect.left;
+        // Spostamento Y: Facciamo un balzo di 20 pixel (circa un'interlinea) sopra o sotto
+        const currentY = e.key === 'ArrowDown' ? caretRect.bottom + 20 : caretRect.top - 20;
+
+        // 2. RAYCASTING: Chiediamo al browser cosa c'è a quelle specifiche coordinate
+        let targetNode = null;
+        let targetOffset = 0;
+
+        if (document.caretRangeFromPoint) {
+            // Chrome / Edge / Safari
+            const dropRange = document.caretRangeFromPoint(currentX, currentY);
+            if (dropRange) { 
+                targetNode = dropRange.startContainer; 
+                targetOffset = dropRange.startOffset; 
+            }
+        } else if (document.caretPositionFromPoint) {
+            // Firefox
+            const pos = document.caretPositionFromPoint(currentX, currentY);
+            if (pos) { 
+                targetNode = pos.offsetNode; 
+                targetOffset = pos.offset; 
+            }
+        }
+
+        const editor = document.getElementById('noteContent');
+
+        // 3. Verifica se abbiamo colpito qualcosa di valido nell'editor
+        if (targetNode && editor.contains(targetNode)) {
+            // Fix: targetNode potrebbe essere un nodo di testo, che non ha .closest()
+            const checkNode = targetNode.nodeType === 3 ? targetNode.parentNode : targetNode;
+            
+            if (!checkNode.closest('.adv-widget-shell:not(.adv-inline-shell)')) {
+                // Perfetto! Abbiamo trovato l'allineamento. Spostiamo il cursore.
+                const newRange = document.createRange();
+                newRange.setStart(targetNode, targetOffset);
+                newRange.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(newRange);
+                return true;
+            }
+        }
+
+        // 4. FALLBACK DI SICUREZZA
+        // Se il raycast fallisce (es. la riga sotto è troppo corta o siamo a fine blocco),
+        // usiamo la logica dei blocchi per non restare mai bloccati.
+        const currentBlock = parent.closest('p, div, li, h1, h2, h3, h4, h5, h6');
+        if (!currentBlock || currentBlock.id === 'noteContent') return false;
+
+        let targetBlock = null;
+        if (e.key === 'ArrowDown') {
+            targetBlock = currentBlock.nextElementSibling;
+            while (targetBlock && (!Editor.isBlockElement(targetBlock) || targetBlock.classList.contains('adv-widget-shell'))) {
+                targetBlock = targetBlock.nextElementSibling;
+            }
+            
+            // Se non c'è un blocco sotto, creiamo un nuovo paragrafo per permettere l'uscita
+            if (!targetBlock) {
+                targetBlock = document.createElement('p');
+                targetBlock.innerHTML = '<br>';
+                currentBlock.parentNode.insertBefore(targetBlock, currentBlock.nextSibling);
+            }
+        } 
+        else if (e.key === 'ArrowUp') {
+            targetBlock = currentBlock.previousElementSibling;
+            while (targetBlock && (!Editor.isBlockElement(targetBlock) || targetBlock.classList.contains('adv-widget-shell'))) {
+                targetBlock = targetBlock.previousElementSibling;
+            }
+        }
+
+        if (targetBlock) {
+            const newRange = document.createRange();
+            newRange.selectNodeContents(targetBlock);
+            newRange.collapse(e.key === 'ArrowDown'); 
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+            targetBlock.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            return true;
+        }
+
+        return false;
+    },
+
+    /**
+     * GESTORE DI NAVIGAZIONE TABELLE (Matrice 2D)
+     * Ignora le regole logiche del browser per imporre spostamenti fisici su griglia (X,Y)
+     * e supporta le micro-navigazioni all'interno della singola cella.
+     */
     handleTableNavigation: (e) => {
         if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return false;
-        if (e.shiftKey) return false; // Non interferire con la selezione multipla nativa
+        
+        // Prima di controllare le tabelle, diamo priorità allo scudo anti-rimbalzo per gli snippet
+        if (Editor._handleSnippetVerticalEscape(e)) return true;
+
+        if (e.shiftKey) return false; // Non interferire con la selezione multipla nativa (Shift+Arrow)
 
         const sel = window.getSelection();
         if (!sel.rangeCount) return false;
@@ -57,6 +193,7 @@ Object.assign(Editor, {
         if (!table) return false;
 
         // 1. COSTRUZIONE MATRICE 2D DELLA TABELLA (Risolve il problema dei Rowspan/Colspan)
+        // Creiamo una rappresentazione virtuale della tabella dove ogni cella "fusa" occupa più posti.
         const grid = [];
         let maxCols = 0;
         let currGeo = null;
@@ -68,7 +205,7 @@ Object.assign(Editor, {
             
             for (let c = 0; c < tr.cells.length; c++) {
                 const td = tr.cells[c];
-                // Salta le coordinate già occupate da celle fuse (span) in righe precedenti
+                // Salta le coordinate logiche già occupate da celle fuse (rowspan/colspan) in righe precedenti
                 while (grid[r][x]) { x++; }
                 
                 const rs = parseInt(td.getAttribute('rowspan')) || 1;
@@ -78,7 +215,7 @@ Object.assign(Editor, {
                 
                 if (td === cell) currGeo = geo;
 
-                // Occupa lo spazio logico nella matrice 2D
+                // Occupa fisicamente lo spazio logico nella matrice 2D
                 for (let yy = 0; yy < rs; yy++) {
                     if (!grid[r + yy]) grid[r + yy] = [];
                     for (let xx = 0; xx < cs; xx++) {
@@ -94,10 +231,12 @@ Object.assign(Editor, {
         const maxRows = grid.length;
 
         // 2. CALCOLO TOLLERANZA BORDI (Micro-Navigazione Testuale)
+        // Determina se il cursore è arrivato fisicamente sul bordo della cella. Se non lo è, 
+        // lascia che l'utente si sposti normalmente tra le parole senza uscire.
         const range = sel.getRangeAt(0);
         let caretRect = range.getBoundingClientRect();
 
-        // Fix per poter calcolare la posizione in celle vuote (solo <br>)
+        // Fix per poter calcolare la posizione geometrica in celle vuote (contenenti solo <br>)
         if (caretRect.width === 0 && caretRect.height === 0) {
             const span = document.createElement('span');
             span.appendChild(document.createTextNode('\u200B'));
@@ -116,7 +255,7 @@ Object.assign(Editor, {
         const caretPos = Editor._getAbsoluteCaretPosition(cell, true);
         const isEmpty = textLen === 0 || cell.innerText.replace(/[\n\r\u200B]/g, '').trim() === '';
 
-        // Rilevamento confini estremi: Permette di navigare testo multi-riga *prima* di scavalcare la cella
+        // Rilevamento confini estremi (Tolleranza 80% dell'altezza linea per evitare falsi positivi)
         let isAtTop = isEmpty || (caretRect.top - cellRect.top - pt) <= (lh * 0.8);
         let isAtBottom = isEmpty || (cellRect.bottom - pb - caretRect.bottom) <= (lh * 0.8);
         let isAtLeft = isEmpty || caretPos === 0;
@@ -138,11 +277,11 @@ Object.assign(Editor, {
         e.preventDefault(); // Da qui in poi governiamo noi: blocco totale del salto casuale nativo
 
         if (intent === 'up') targetY = currGeo.startY - 1;
-        if (intent === 'down') targetY = currGeo.endY + 1; // Salta in fondo all'ingombro del rowspan
+        if (intent === 'down') targetY = currGeo.endY + 1; // Salta in fondo all'ingombro dell'eventuale rowspan
         if (intent === 'left') targetX = currGeo.startX - 1;
-        if (intent === 'right') targetX = currGeo.endX + 1; // Salta in fondo all'ingombro del colspan
+        if (intent === 'right') targetX = currGeo.endX + 1; // Salta in fondo all'ingombro dell'eventuale colspan
 
-        // Logica "A Capo" (Wrap-around): Se premo destra a fine riga, vado a capo giù a sinistra.
+        // Logica "A Capo" (Wrap-around): Se premo destra a fine riga, vado a capo alla riga successiva a sinistra.
         if (targetX < 0 && intent === 'left') {
             targetY = currGeo.startY - 1;
             targetX = maxCols - 1;
@@ -152,7 +291,7 @@ Object.assign(Editor, {
             targetX = 0;
         }
 
-        // 4. ESECUZIONE SPOSTAMENTO
+        // 4. ESECUZIONE SPOSTAMENTO SULLA MATRICE
         let targetCell = null;
         if (targetY >= 0 && targetY < maxRows && targetX >= 0 && targetX < maxCols) {
             if (grid[targetY] && grid[targetY][targetX]) {
@@ -163,20 +302,22 @@ Object.assign(Editor, {
         if (targetCell) {
             const newRange = document.createRange();
             if (targetCell.innerText.replace(/[\n\r\u200B]/g, '').trim() === '') {
+                // Cella vuota, posiziona cursore nudo all'inizio
                 newRange.setStart(targetCell, 0);
                 newRange.collapse(true);
             } else {
                 newRange.selectNodeContents(targetCell);
-                // Direzione cursore basata sull'approccio di arrivo
-                if (intent === 'down' || intent === 'right') newRange.collapse(true); // Cursore inizia prima lettera
-                else newRange.collapse(false); // Cursore dopo ultima lettera
+                // Direzione cursore basata sull'approccio di arrivo: 
+                // Se vengo da sopra/sinistra mi metto in testa, se vengo dal basso/destra mi metto in coda.
+                if (intent === 'down' || intent === 'right') newRange.collapse(true); 
+                else newRange.collapse(false); 
             }
             sel.removeAllRanges();
             sel.addRange(newRange);
             targetCell.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
             return true;
         } else {
-            // Fuoriuscita pulita dalla Tabella
+            // FUORIUSCITA: Genera un paragrafo vuoto fuori dalla tabella se l'utente tenta di uscirne e non ci sono altri blocchi.
             const wrapper = table.closest('.simple-table-wrapper, .adv-table-wrapper') || table;
             let pNode = (intent === 'up' || (intent === 'left' && targetY < 0)) ? wrapper.previousElementSibling : wrapper.nextElementSibling;
             
@@ -197,6 +338,10 @@ Object.assign(Editor, {
         }
     },
 
+    /**
+     * GESTORE TABULAZIONE
+     * Trasforma il tasto TAB in una funzione contestuale (Indentazione per Liste, Spazi vuoti per il Codice).
+     */
     handleTabKey: (e) => {
         const selection = window.getSelection();
         if (!selection.rangeCount) return;
@@ -204,44 +349,34 @@ Object.assign(Editor, {
         let node = selection.anchorNode;
         if (node.nodeType === 3) node = node.parentNode;
 
+        // Impedisce il Tab all'interno dei Diari o Tabelle Semplici per non sfalsarne il layout
         if (node.closest('td, th') || node.closest('.adv-journal-wrapper')) return;
 
         e.preventDefault();
 
-        // LOGICA SPECIALE PER BLOCCHI DI CODICE
+        // 1. LOGICA SPECIALE PER BLOCCHI DI CODICE
         const preNode = node.closest('pre');
         if (preNode) {
-            console.log("[TAB-DEBUG] ==========================================");
-            console.log("[TAB-DEBUG] 1. Pressione TAB rilevata nel blocco codice.");
-
             Editor.saveSnapshot();
             
-            // SELEZIONE SINGOLA: Se non ho selezionato più testo e non premo Shift, 
-            // sfrutto l'API nativa del browser per iniettare direttamente al cursore, senza parsing stringhe!
+            // Caso A (Selezione Singola senza Shift): Usa l'API nativa per velocità ed eludere parsing complessi
             if (selection.isCollapsed && !e.shiftKey) {
-                console.log("[TAB-DEBUG] 2. Inserimento nativo di 4 spazi (Collapsed).");
-                
                 document.execCommand('insertText', false, '    ');
-                
                 if (typeof CodeManager !== 'undefined') {
-                    // Calcolo esatto DOPO l'inserimento
+                    // Calcolo esatto post-inserimento prima di richiamare l'Highlighter
                     const pos = Editor._getCodeOffset(preNode, selection.anchorNode, selection.anchorOffset);
-                    console.log(`[TAB-DEBUG] 3. Ricalcolo posizione post-inserimento: ${pos}`);
-                    
                     CodeManager.highlightBlock(preNode, true);
                     Editor._setCodeOffset(preNode, pos, pos);
                 }
                 Store.triggerAutoSave();
-                console.log("[TAB-DEBUG] ==========================================");
                 return;
             }
             
-            // MULTILINE O SHIFT-TAB (Usa l'estrattore Range.cloneContents per allinearsi)
+            // Caso B (Selezione Multi-Linea o Shift+Tab): Applica logica di indentazione/outdentazione stringa
             const range = selection.getRangeAt(0);
             
             let startOffset = Editor._getCodeOffset(preNode, range.startContainer, range.startOffset);
             let endOffset = Editor._getCodeOffset(preNode, range.endContainer, range.endOffset);
-            
             if (startOffset > endOffset) { const t = startOffset; startOffset = endOffset; endOffset = t; }
 
             // Usa un estrattore puro per allineare il testo alla griglia matematica del Caret Engine, ignorando i bug degli span nidificati.
@@ -253,13 +388,12 @@ Object.assign(Editor, {
                 else if (wNode.nodeName === 'BR') text += '\n';
             }
             
-            console.log(`[TAB-DEBUG] 2. Testo estratto (lunghezza: ${text.length}). startOffset: ${startOffset}`);
-
             let lines = text.split('\n');
             let currentPos = 0;
             let startLineIdx = -1;
             let endLineIdx = -1;
 
+            // Mappatura delle coordinate verticali e orizzontali (Linee e Colonne)
             for (let i = 0; i < lines.length; i++) {
                 let lineLength = lines[i].length + 1; // +1 per il \n
                 if (startLineIdx === -1 && (currentPos + lineLength > startOffset || currentPos + lines[i].length >= startOffset)) startLineIdx = i;
@@ -275,6 +409,7 @@ Object.assign(Editor, {
 
             for (let i = startLineIdx; i <= endLineIdx; i++) {
                 if (e.shiftKey) {
+                    // Outdent (Rimuove fino a 4 spazi iniziali)
                     const match = lines[i].match(/^[ \t]{1,4}/);
                     if (match) {
                         lines[i] = lines[i].substring(match[0].length);
@@ -282,6 +417,7 @@ Object.assign(Editor, {
                         if (i === startLineIdx) charsAddedBeforeStart -= match[0].length;
                     }
                 } else {
+                    // Indent (Aggiunge 4 spazi)
                     lines[i] = '    ' + lines[i];
                     charsAddedTotal += 4;
                     if (i === startLineIdx) charsAddedBeforeStart += 4;
@@ -291,25 +427,23 @@ Object.assign(Editor, {
             preNode.textContent = lines.join('\n');
             if (typeof CodeManager !== 'undefined') CodeManager.highlightBlock(preNode, true);
 
+            // Ricalcolo del offset finale
             let newStart = Math.max(0, startOffset + charsAddedBeforeStart);
             let newEnd = Math.max(0, endOffset + charsAddedTotal);
             
-            console.log(`[TAB-DEBUG] 3. Riposizionamento cursore a: ${newStart}`);
-            
             Editor._setCodeOffset(preNode, newStart, newEnd);
             Store.triggerAutoSave();
-            
-            console.log("[TAB-DEBUG] ==========================================");
             return;
         }
 
-        // LOGICA NORMALE PER LISTE E PARAGRAFI
+        // 2. LOGICA NORMALE PER LISTE E PARAGRAFI
         const range = selection.getRangeAt(0);
         const closestLi = node.closest('li');
         let blocks = [];
         
         if (!range.collapsed) blocks = Editor.getSelectedBlocks(range);
 
+        // Se non è selezionato un intero blocco, cerchiamo di catturare l'elemento contestuale
         if (blocks.length === 0) {
             if (closestLi) blocks.push(closestLi);
             else {
@@ -324,6 +458,7 @@ Object.assign(Editor, {
         if (blocks.length > 0 && (e.shiftKey || !range.collapsed || closestLi)) {
             Editor.saveSnapshot();
             
+            // Iniezione di nodi Ghost Marker per salvare la selezione durante la rigenerazione del DOM
             const startId = 'tab-start-' + Date.now();
             const endId = 'tab-end-' + Date.now();
 
@@ -342,11 +477,13 @@ Object.assign(Editor, {
             startRange.collapse(true);
             startRange.insertNode(startMarker);
 
+            // Ordina i blocchi seguendo la gerarchia DOM dall'alto verso il basso
             blocks.sort((a,b) => (a === b) ? 0 : (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 
             blocks.forEach(block => {
                 if (block.tagName === 'LI') {
                     const ulNode = block.parentNode;
+                    // Indentazione specifica per le Checklist avanzate o per l'elenco puntato nativo
                     if (ulNode && ulNode.classList.contains('adv-checklist')) {
                         if (e.shiftKey) Editor.outdentChecklistLine(block);
                         else Editor.indentChecklistLine(block);
@@ -363,6 +500,7 @@ Object.assign(Editor, {
                         }
                     }
                 } else {
+                    // Indentazione per paragrafi standard (Aggiunge \u00A0 - Spazi Unificatori)
                     if (e.shiftKey) {
                         let textNode = block.firstChild;
                         while (textNode && textNode.nodeType !== 3) textNode = textNode.nextSibling;
@@ -380,6 +518,7 @@ Object.assign(Editor, {
                 }
             });
 
+            // Recupera e distrugge i marker riposizionando il cursore
             const recoveredStart = document.getElementById(startId);
             const recoveredEnd = document.getElementById(endId);
 
@@ -396,15 +535,22 @@ Object.assign(Editor, {
             if (recoveredEnd) recoveredEnd.remove();
 
         } else {
+            // Fallback per paragrafi vuoti o testo libero: inserimento brutale di 4 spazi
             document.execCommand('insertText', false, '\u00A0\u00A0\u00A0\u00A0');
         }
         Store.triggerAutoSave();
     },
 
+    /**
+     * GESTORE DI ESCAPE FORMATTAZIONE (Smart Exit)
+     * Rileva quando il cursore si sta incastrando ai confini di uno span (grassetto, link, ecc.)
+     * o di una cella editabile e lo forza ad uscire.
+     */
     handleFormatEscape: (e) => {
         if (!AppState.isEditMode) return;
         
-        // Se l'utente usa ArrowRight / ArrowDown in una zona confinata di un widget, proviamo a farlo evadere.
+        // 1. ESCAPE DA AREE EDITABILI (WIDGETS)
+        // Se l'utente usa frecce direzionali in una zona confinata, tentiamo di farlo evadere verso il basso.
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             const sel = window.getSelection();
             if (!sel.isCollapsed || !sel.rangeCount) return;
@@ -413,14 +559,14 @@ Object.assign(Editor, {
             let container = range.startContainer;
             let offset = range.startOffset;
 
-            // Se siamo alla fine estrema del nodo testuale
+            // Se il cursore si trova alla fine estrema del nodo testuale
             if ((container.nodeType === Node.TEXT_NODE && offset === container.length) ||
                 (container.nodeType !== Node.TEXT_NODE && offset === container.childNodes.length)) {
                 
                 let editableArea = container.nodeType === Node.TEXT_NODE ? container.parentNode.closest('.widget-editable-area') : container.closest('.widget-editable-area');
                 
                 if (editableArea) {
-                    // Controlla se non c'è più testo dopo di noi all'interno di questa area editabile
+                    // Controlla se non c'è più testo *dopo* il cursore all'interno di questa specifica area
                     const walker = document.createTreeWalker(editableArea, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
                     walker.currentNode = container.nodeType === Node.TEXT_NODE ? container : container.childNodes[offset-1] || container;
                     
@@ -435,6 +581,7 @@ Object.assign(Editor, {
 
                     if (isAtVeryEnd) {
                         const widgetShell = editableArea.closest('.adv-widget-shell');
+                        // Creiamo e iniettiamo un nuovo paragrafo per evitare blocchi strutturali
                         if (widgetShell) {
                             e.preventDefault();
                             let targetP = widgetShell.nextElementSibling;
@@ -455,7 +602,7 @@ Object.assign(Editor, {
             }
         }
 
-        // Logic per l'escape dai formati (Grassetto, Colori, ecc.) tramite spazio e freccia
+        // 2. ESCAPE DA SPAN DI FORMATTAZIONE (Grassetto, Colori, ecc.)
         if (e.key === ' ' || e.key === 'ArrowRight') {
             const sel = window.getSelection();
             if (!sel.isCollapsed || !sel.rangeCount) return;
@@ -465,7 +612,7 @@ Object.assign(Editor, {
             let offset = range.startOffset;
 
             if (container.nodeType === Node.TEXT_NODE) {
-                if (offset < container.length) return; 
+                if (offset < container.length) return; // Non siamo alla fine della parola
                 container = container.parentNode;
             } else if (container.childNodes.length > 0 && offset < container.childNodes.length) {
                 return; 
@@ -479,6 +626,7 @@ Object.assign(Editor, {
                 container.className.includes('fs-')
             );
 
+            // Disabilita lo stile e fa uscire il cursore dallo span
             if (formatTags.includes(container.tagName) || isFormatSpan) {
                 if (e.key === 'ArrowRight') {
                     e.preventDefault();
@@ -487,6 +635,7 @@ Object.assign(Editor, {
                     newRange.collapse(true);
                     sel.removeAllRanges();
                     sel.addRange(newRange);
+                    // Rimuove i comandi nativi se persistono
                     document.execCommand('bold', false, false);
                     document.execCommand('italic', false, false);
                     document.execCommand('underline', false, false);
@@ -532,7 +681,7 @@ Object.assign(Editor, {
         let parentList = liNode.parentNode;
         if (!parentList || !['UL', 'OL'].includes(parentList.tagName)) return;
 
-        // 1. Check Se l'elemento è un sotto-elenco annidato
+        // Se l'elemento è già indentato in un sotto-elenco
         const grandParentLi = parentList.parentElement.closest('li');
         if (grandParentLi) {
             const sel = window.getSelection();
@@ -544,7 +693,7 @@ Object.assign(Editor, {
             return;
         }
 
-        // 2. DOM HEALING: Se il browser ha erroneamente avvolto <ul> dentro un <p>, lo srotoliamo PRIMA di operare.
+        // DOM HEALING: Srotola le liste dal tag P in cui il browser a volte le avvolge
         let wrapper = parentList.parentNode;
         if (wrapper && wrapper.tagName === 'P') {
             const grandParent = wrapper.parentNode;
@@ -555,18 +704,17 @@ Object.assign(Editor, {
             wrapper = grandParent; // Il vero wrapper ora è il contenitore pulito
         }
 
-        // 3. Spostiamo i figli FISICAMENTE per non distruggere i marker invisibili della selezione (CTRL+Z e Multi-Select)
         const p = document.createElement('p');
         while (liNode.firstChild) {
             p.appendChild(liNode.firstChild);
         }
 
-        // 4. Logica di iniezione strutturale per spezzare l'elenco
         if (!liNode.previousElementSibling) {
             wrapper.insertBefore(p, parentList);
         } else if (!liNode.nextElementSibling) {
             wrapper.insertBefore(p, parentList.nextSibling);
         } else {
+            // Spezza la lista in due se stiamo "tirando fuori" l'elemento centrale
             const newList = document.createElement(parentList.tagName);
             if (parentList.hasAttribute('type')) newList.setAttribute('type', parentList.getAttribute('type'));
             
@@ -579,7 +727,6 @@ Object.assign(Editor, {
         }
 
         liNode.remove();
-        // Se la lista originale è rimasta vuota (es. l'utente aveva selezionato l'ultimo e unico elemento), la eliminiamo
         if (parentList.children.length === 0) parentList.remove();
     }
 });

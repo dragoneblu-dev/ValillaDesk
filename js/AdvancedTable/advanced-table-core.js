@@ -313,7 +313,7 @@ const AdvancedTable = {
     
     startPan: (e) => {
         const tgt = e.target;
-        if (tgt.closest('input, textarea, button, a, select, .adv-select-pill, .adv-add-btn, .adv-tool-btn, .adv-icon-btn, .widget-drag-handle, .widget-options-btn')) return;
+        if (tgt.closest('input, textarea, button, a, select, .adv-select-pill, .adv-add-btn, .adv-tool-btn, .adv-icon-btn, .widget-drag-handle, .widget-options-btn, .adv-board-card')) return;
         if (tgt.closest('.widget-editable-area') || tgt.closest('.adv-col-resizer') || tgt.closest('.adv-cell-text[contenteditable="true"]')) return;
         if (tgt.closest('th')) return;
 
