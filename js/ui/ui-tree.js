@@ -3,8 +3,8 @@
  * Modulo dedicato al DOM dell'albero gerarchico laterale e Drag&Drop delle Note.
  * FIX FILTRI: Il motore controlla ora gli activePropertyFilters con la logica *EXISTS* e match inclusivo.
  * FEAT UX: Aggiunto indicatore visivo leggero per i Timer dei Segnalibri direttamente nell'albero.
- * FIX TYPO: Risolto "node is not defined" durante il conteggio degli highlight nelle Pagine Dedicate.
- * FIX PREFERITI E SEGNALIBRI: Stella Gialla se preferito, Foglio Arancione se Segnalibro, Stella Arancione se entrambi.
+ * FIX COLLAPSE BUG: Unificata la logica di calcolo dei figli (Sotto-note + TOC + DB) 
+ * per garantire che la freccetta di espansione agisca su un unico blocco coerente senza forzature CSS conflittuali.
  */
 
 Object.assign(UI, {
@@ -497,15 +497,22 @@ Object.assign(UI, {
             if (!node.isMarked) nodeDirectMatch = false;
         }
 
+        // =========================================================
+        // FIX UNIFICAZIONE FIGLI (TOC + DB + Sotto-Note)
+        // Calcoliamo TUTTI i possibili figli prima di generare l'HTML
+        // =========================================================
+
         const childElements = [];
         let hasMatchChild = false;
 
+        // 1. Sotto-Note classiche
         const children = forceRender ? [] : Store.getChildren(node.id).filter(n => !n.isRecordNote);
         children.forEach(c => {
             const el = UI.buildTreeElement(c);
             if (el) { childElements.push(el); hasMatchChild = true; }
         });
 
+        // 2. Database e Widget annidati
         let dbElementsToInject = [];
         let hasMatchDbChild = false;
         
@@ -528,16 +535,28 @@ Object.assign(UI, {
             }
         }
 
+        // 3. Indice Dinamico (TOC) della nota attiva
+        let tocHeaders = [];
+        if (node.id === AppState.currentNoteId && node.content) {
+            const temp = document.createElement('div');
+            temp.innerHTML = node.content;
+            tocHeaders = temp.querySelectorAll('h2, h3');
+        }
+
+        // Se siamo in modalità filtro e questa nota non c'entra nulla, scartala
         if (!isDefaultView) {
             if (!nodeDirectMatch && !hasMatchChild && !hasMatchDbChild) return null;
         }
 
         const isGhost = !isDefaultView && !nodeDirectMatch && (hasMatchChild || hasMatchDbChild);
+        const hasAnyChildren = childElements.length > 0 || dbElementsToInject.length > 0 || tocHeaders.length > 0;
 
-        const wrapper = document.createElement('div'); wrapper.className = 'node-wrapper'; wrapper.dataset.id = node.id;
+        const wrapper = document.createElement('div'); 
+        wrapper.className = 'node-wrapper';
+        wrapper.dataset.id = node.id;
         
-        // RIMOSSA CLASSE "marked" CHE GENERAVA LA BARRA GIALLA LATERALE
-        const content = document.createElement('div'); content.className = 'node-content';
+        const content = document.createElement('div'); 
+        content.className = 'node-content';
         
         if (node.id === AppState.currentNoteId) content.classList.add('active');
         if (isGhost) content.classList.add('tree-ghost-node');
@@ -554,14 +573,12 @@ Object.assign(UI, {
             content.ondrop = (e) => UI.handleDropNode(e, node.id);
         }
 
-        // AZIONE CLICK SINGOLO (Apertura Normale)
         content.onclick = (e) => {
             if (!e.target.closest('.node-add-btn') && !e.target.closest('.toggle-btn')) {
                 if (typeof UI.selectNote !== 'undefined') UI.selectNote(node.id);
             }
         };
 
-        // AZIONE DOPPIO CLICK (Apertura con Focus sul Titolo per Rinomina Rapida)
         content.ondblclick = (e) => {
             if (e.target.closest('.node-add-btn') || e.target.closest('.toggle-btn')) return;
             e.stopPropagation();
@@ -569,12 +586,10 @@ Object.assign(UI, {
             
             if (typeof UI.selectNote !== 'undefined') UI.selectNote(node.id);
             
-            // Forza la modalità modifica se non lo è già
             if (!AppState.isEditMode) {
                 UI.toggleEditMode(true);
             }
             
-            // Aspetta che il rendering della nota finisca e poi focus+select sul titolo
             setTimeout(() => {
                 const titleInput = document.getElementById('noteTitle');
                 if (titleInput && !titleInput.hasAttribute('readonly')) {
@@ -584,16 +599,22 @@ Object.assign(UI, {
             }, 250); 
         };
 
+        // CREAZIONE FRECCETTA UNIFICATA
         const toggle = document.createElement('div');
         toggle.className = 'toggle-btn';
 
-        if (childElements.length > 0 || dbElementsToInject.length > 0) {
-            const isExpanded = node.expanded || !isDefaultView || dbElementsToInject.length > 0;
+        // Regola base di espansione: se node.expanded è false, chiudi. Altrimenti apri (default per TOC e ricerche)
+        let isExpanded = node.expanded !== false || !isDefaultView || dbElementsToInject.length > 0;
+        
+        if (hasAnyChildren) {
             if (isExpanded) toggle.classList.add('expanded');
             toggle.innerHTML = Icons.chevronRight;
+            toggle.style.cursor = 'pointer';
             toggle.onclick = (e) => {
                 e.stopPropagation();
-                node.expanded = !node.expanded;
+                // Assicura il passaggio di stato in RAM
+                if (node.expanded === undefined) node.expanded = false; 
+                else node.expanded = !node.expanded;
                 UI.renderTree();
             };
         } else {
@@ -607,7 +628,6 @@ Object.assign(UI, {
         let iconColorStyle = "";
         const hasBookmark = node.content && node.content.includes('adv-bookmark-marker');
 
-        // LOGICA IBRIDA PREFERITI / SEGNALIBRI (Icone e Colori)
         if (node.isRecordNote) {
             customIcon = Icons.recordPage;
             iconColorStyle = "color:var(--record-color);";
@@ -625,7 +645,6 @@ Object.assign(UI, {
 
         title.innerHTML = `<span style="opacity:0.8; ${iconColorStyle}">${customIcon}</span> <span>${node.title || 'Senza Titolo'}</span>`;
 
-        // INTEGRAZIONE TIMER SEGNALIBRI (Mostra il tempo residuo nell'albero)
         if (reqBook && !isGhost && node.content) {
             const timerMatch = node.content.match(/data-timer-expire=["'](\d+)["']/);
             if (timerMatch) {
@@ -654,49 +673,25 @@ Object.assign(UI, {
         content.append(toggle, title, addBtn);
         wrapper.appendChild(content);
 
-        let block = null;
-        let blockInner = null;
-
-        if (childElements.length > 0 || dbElementsToInject.length > 0) {
-            block = document.createElement('div');
+        // INIEZIONE UNIFICATA DEI FIGLI NEL BLOCCO
+        if (hasAnyChildren) {
+            const block = document.createElement('div');
             block.className = 'children-block';
-            blockInner = document.createElement('div');
+            if (isExpanded) block.classList.add('expanded');
+            
+            const blockInner = document.createElement('div');
             blockInner.className = 'children-block-inner';
 
-            if (node.expanded || !isDefaultView || dbElementsToInject.length > 0) block.classList.add('expanded');
-
-            childElements.forEach(c => blockInner.appendChild(c));
-            dbElementsToInject.forEach(db => blockInner.appendChild(db));
-            
-            block.appendChild(blockInner);
-            wrapper.appendChild(block);
-        }
-
-        if (node.id === AppState.currentNoteId && node.content) {
-            const temp = document.createElement('div');
-            temp.innerHTML = node.content;
-            const headers = temp.querySelectorAll('h2, h3');
-
-            if (headers.length > 0) {
-                if (!block) {
-                    block = document.createElement('div');
-                    block.className = 'children-block expanded';
-                    blockInner = document.createElement('div');
-                    blockInner.className = 'children-block-inner';
-                    block.appendChild(blockInner);
-                    wrapper.appendChild(block);
-                } else {
-                    block.classList.add('expanded');
-                }
-
+            // 1. Iniezione TOC (in cima)
+            if (tocHeaders.length > 0) {
                 const tocContainer = document.createElement('div');
                 tocContainer.className = 'dynamic-toc-container';
 
-                headers.forEach(h => {
+                tocHeaders.forEach(h => {
                     const hText = h.innerText.trim();
                     if (!hText) return;
 
-                    const isH1 = h.tagName.toLowerCase() === 'h2';
+                    const isH1 = h.tagName.toLowerCase() === 'h2'; 
                     const tocEl = document.createElement('div');
                     tocEl.className = `toc-node ${isH1 ? 'toc-h1' : 'toc-h2'}`;
                     tocEl.innerHTML = `<span class="toc-icon">#</span> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${hText.replace(/"/g, '&quot;')}">${hText}</span>`;
@@ -708,20 +703,15 @@ Object.assign(UI, {
 
                     tocContainer.appendChild(tocEl);
                 });
-
-                blockInner.insertBefore(tocContainer, blockInner.firstChild);
-
-                if (children.length === 0 && dbElementsToInject.length === 0) {
-                    toggle.classList.add('expanded');
-                    toggle.innerHTML = Icons.chevronRight;
-                    toggle.style.cursor = 'pointer';
-                    toggle.onclick = (e) => {
-                        e.stopPropagation();
-                        block.classList.toggle('expanded');
-                        toggle.classList.toggle('expanded');
-                    }
-                }
+                blockInner.appendChild(tocContainer);
             }
+
+            // 2. Iniezione Database Virtuali e Sotto-note
+            dbElementsToInject.forEach(db => blockInner.appendChild(db));
+            childElements.forEach(c => blockInner.appendChild(c));
+            
+            block.appendChild(blockInner);
+            wrapper.appendChild(block);
         }
 
         return wrapper;
@@ -770,6 +760,7 @@ Object.assign(UI, {
         e.preventDefault();
         const targetEl = e.currentTarget;
 
+        // Se stiamo trascinando un Widget/Immagine (Spostamento Inter-Nota)
         if (AppState.draggedBlockId) {
             targetEl.classList.remove('drag-top', 'drag-bottom', 'drag-middle');
             if (targetId !== AppState.currentNoteId) {
@@ -813,8 +804,10 @@ Object.assign(UI, {
         e.preventDefault(); 
         e.stopPropagation(); 
 
+        // Se stiamo rilasciando un Widget/Immagine (Spostamento Inter-Nota)
         if (AppState.draggedBlockId) {
             document.querySelectorAll('.node-content').forEach(el => el.classList.remove('drag-top', 'drag-bottom', 'drag-middle'));
+            
             if (targetId !== AppState.currentNoteId && typeof WidgetManager !== 'undefined') {
                 WidgetManager.moveWidgetToNote(AppState.draggedBlockId, targetId);
             }
@@ -823,6 +816,7 @@ Object.assign(UI, {
             return;
         }
 
+        // Se stiamo rilasciando una Nota
         if (!AppState.draggedNoteId || AppState.draggedNoteId === targetId) return; 
         if (UI.isDescendant(AppState.draggedNoteId, targetId)) return; 
         UI.executeMove(AppState.draggedNoteId, targetId, AppState.dragPosition); 
