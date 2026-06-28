@@ -3,6 +3,8 @@
  * Modulo isolato per la gestione degli eventi Copia, Taglia e Incolla.
  * FIX PASTE BR to P: Se si incolla del testo formattato a <br> all'interno della root, 
  * questo viene convertito in veri e propri <p> per permettere al tasto TAB di identificare la riga fisica.
+ * FIX SNIPPET & INLINE WIDGETS: Protezione assoluta dalle andate a capo (\n) negli snippet e
+ * prevenzione dello split del DOM nativo del browser tramite BR-Shielding.
  */
 
 Object.assign(Editor, {
@@ -15,6 +17,8 @@ Object.assign(Editor, {
             const sel = window.getSelection();
             if (sel.isCollapsed) return;
 
+            //console.groupCollapsed(`[DEBUG-PASTE] Evento ${e.type.toUpperCase()} intercettato`);
+
             e.preventDefault();
 
             const range = sel.getRangeAt(0);
@@ -25,6 +29,7 @@ Object.assign(Editor, {
             const codeBlock = anchorNode.closest('.code-content');
             
             if (codeBlock) {
+                //console.log("[DEBUG-PASTE] Copia da blocco codice");
                 const tempDiv = document.createElement('div');
                 tempDiv.appendChild(range.cloneContents());
                 
@@ -48,6 +53,7 @@ Object.assign(Editor, {
                     if (typeof CodeManager !== 'undefined') CodeManager.highlightBlock(codeBlock, true);
                     Store.triggerAutoSave();
                 }
+                //console.groupEnd();
                 return;
             }
 
@@ -55,6 +61,8 @@ Object.assign(Editor, {
             const clone = range.cloneContents();
             const tempDiv = document.createElement('div');
             tempDiv.appendChild(clone);
+
+            //console.log("[DEBUG-PASTE] HTML clonato dalla selezione:", tempDiv.innerHTML);
 
             let htmlStr = tempDiv.innerHTML;
             htmlStr = htmlStr.replace(/<\/p>\s*<p>/gi, '\n');
@@ -78,6 +86,7 @@ Object.assign(Editor, {
                 range.deleteContents();
                 Store.triggerAutoSave();
             }
+            //console.groupEnd();
         };
 
         document.addEventListener('copy', handleCopyCut);
@@ -85,11 +94,14 @@ Object.assign(Editor, {
     },
 
     handlePaste: (e) => {
-        console.groupCollapsed('🔴 [PASTE-DEBUG] Avvio Incolla');
+        //console.groupCollapsed('🔴 [DEBUG-PASTE] Avvio Incolla (handlePaste)');
         
         const clipboardData = (e.clipboardData || window.clipboardData);
         const pastedText = clipboardData.getData('text/plain');
         const pastedHTML = clipboardData.getData('text/html');
+        
+        //console.log("[DEBUG-PASTE] Plain Text in entrata:", pastedText);
+        //console.log("[DEBUG-PASTE] HTML in entrata:", pastedHTML);
         
         const items = Array.from((e.clipboardData || e.originalEvent.clipboardData).items);
         let isImage = false;
@@ -97,7 +109,7 @@ Object.assign(Editor, {
         // 1. GESTIONE IMMAGINI INCOLLATE (Clipboard File)
         for (let item of items) {
             if (item.kind === 'file' && item.type.includes('image/')) {
-                console.log(`[PASTE-DEBUG] Immagine rilevata. Passo a FileReader.`);
+                //console.log(`[DEBUG-PASTE] Immagine rilevata. Passo a FileReader.`);
                 e.preventDefault();
                 Editor.saveSnapshot();
                 isImage = true;
@@ -126,15 +138,21 @@ Object.assign(Editor, {
                     img.src = ev.target.result;
                 };
                 reader.readAsDataURL(blob);
-                console.groupEnd();
+                //console.groupEnd();
                 return;
             }
         }
 
-        if (isImage) return;
+        if (isImage) {
+            //console.groupEnd();
+            return;
+        }
 
         const sel = window.getSelection();
-        if (!sel.rangeCount) { console.groupEnd(); return; }
+        if (!sel.rangeCount) { 
+            //console.groupEnd(); 
+            return;
+        }
         
         // Muro di Sicurezza Anti-Zombie: Se l'utente sta incollando su una selezione multipla,
         // verifichiamo che non stia distruggendo un intero database visivo.
@@ -142,7 +160,7 @@ Object.assign(Editor, {
             if (typeof Editor !== 'undefined' && Editor.handleBulkWidgetDeletion) {
                 if (!Editor.handleBulkWidgetDeletion()) {
                     e.preventDefault();
-                    console.groupEnd();
+                    //console.groupEnd();
                     return;
                 }
             }
@@ -151,9 +169,13 @@ Object.assign(Editor, {
         let targetNode = sel.anchorNode;
         if (targetNode.nodeType === 3) targetNode = targetNode.parentNode;
 
-        const isInsideWidget = WidgetManager.isProtectedBlock(targetNode);
+        //console.log("[DEBUG-PASTE] Target Node per Incolla:", targetNode);
+
+        // FIX INLINE WIDGETS: Controlliamo sia i blocchi (DB/Codice) che gli inline (Snippet/Appunti)
+        const isInsideWidget = WidgetManager.isProtectedBlock(targetNode) || WidgetManager.isProtectedInline(targetNode);
         const isInlineNote = !!targetNode.closest('#inlineNoteInput');
         const codeWrapper = targetNode.closest('[data-widget-type="code"]');
+        const snippetText = targetNode.closest('.snippet-text');
 
         const isHeavyLoad = pastedText.length > 15000 || (pastedHTML && pastedHTML.length > 30000);
         e.preventDefault();
@@ -163,11 +185,23 @@ Object.assign(Editor, {
                 Editor.saveSnapshot();
 
                 if (isInsideWidget) {
-                    console.log("[PASTE-DEBUG] Firewall Widget attivo.");
+                    //console.log("[DEBUG-PASTE] Incollo dentro un Widget esistente.");
                     const isEditable = WidgetManager.isInsideEditableWidgetArea(targetNode) || !!targetNode.closest('.simple-table-wrapper td, .simple-table-wrapper th');
                     
                     if (!isEditable) {
+                        //console.warn("[DEBUG-PASTE] Area non editabile, abort.");
                         alert("⚠️ Cursore in area non valida. Clicca all'interno di un'area di testo prima di incollare.");
+                        return;
+                    }
+
+                    // FIX ASSOLUTO SNIPPET COPIABILE MULTI-LINEA: Incolla l'HTML pulito
+                    // usando i <br> per non spaccare in due il DOM dello span!
+                    if (snippetText) {
+                        //console.log("[DEBUG-PASTE] Incollo testo multi-riga in Snippet Copiabile preservando i ritorni a capo");
+                        // Sanitizza il testo puro e converte gli a capo in <br>
+                        const cleanTextWithBrs = pastedText.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r\n|\n|\r/g, '<br>');
+                        document.execCommand('insertHTML', false, cleanTextWithBrs);
+                        Store.triggerAutoSave();
                         return;
                     }
 
@@ -199,9 +233,9 @@ Object.assign(Editor, {
                         
                         if (typeof CodeManager !== 'undefined') CodeManager.highlightBlock(preNode, true);
                         if (typeof Editor._setCodeOffset === 'function') Editor._setCodeOffset(preNode, targetCaretPos, targetCaretPos);
-                        console.log("[PASTE-DEBUG] Inserimento DOM nativo in blocco codice completato.");
+                        //console.log("[DEBUG-PASTE] Inserimento DOM nativo in blocco codice completato.");
                     } else {
-                        // Nelle tabelle o altre aree widget, permettiamo solo l'incollatura del testo pulito
+                        //console.log("[DEBUG-PASTE] Esecuzione insertText nudo in widget (es. Appunto Inline)");
                         document.execCommand('insertText', false, cleanText);
                     }
                     Store.triggerAutoSave();
@@ -209,11 +243,13 @@ Object.assign(Editor, {
                 }
 
                 if (isInlineNote) {
+                    //console.log("[DEBUG-PASTE] Incollo nel cassetto Modifica Appunto Inline");
                     document.execCommand('insertText', false, pastedText);
                     return;
                 }
 
                 if (!pastedHTML) {
+                    //console.log("[DEBUG-PASTE] Fallback a Plain Text nella Root");
                     let fallbackText = pastedText;
                     // FIX BR: Anche il plain text incollato nella root viene impaginato correttamente
                     if (!targetNode.closest('td, th, li, pre')) {
@@ -225,7 +261,7 @@ Object.assign(Editor, {
                     return;
                 }
 
-                console.log("[PASTE-DEBUG] Avvio Deep Sanitization (Gomma Draconiana)");
+                //console.log("[DEBUG-PASTE] Avvio Deep Sanitization (Gomma Draconiana)");
                 
                 // Whitelist estesa solo per l'infrastruttura di VanillaDesk
                 const allowedTags = ['B', 'I', 'U', 'S', 'A', 'P', 'DIV', 'SPAN', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'BR', 'IMG', 'SVG', 'PATH', 'POLYLINE', 'LINE', 'RECT', 'CIRCLE', 'INPUT'];
@@ -428,11 +464,24 @@ Object.assign(Editor, {
                 // converto i <br> isolati in blocchi di paragrafo in modo che il tasto TAB funzioni.
                 // ==============================================================
                 if (!targetNode.closest('td, th, li, pre')) {
-                    console.log("[PASTE-DEBUG] Cursore libero: Converto <br> in <p> per abilitare TAB.");
+                    // SHIELD: Proteggiamo i <br> all'interno degli elementi inline (Appunti/Snippet)
+                    // per evitare che vengano trasformati in <p> distruggendo l'HTML valido.
+                    let tempWrapper = document.createElement('div');
+                    tempWrapper.innerHTML = finalHTML;
+                    tempWrapper.querySelectorAll('.adv-inline-shell, .inline-note-data, .snippet-text').forEach(el => {
+                        el.innerHTML = el.innerHTML.replace(/<br\s*\/?>/gi, '%%%BR_SAFE%%%');
+                    });
+                    finalHTML = tempWrapper.innerHTML;
+
+                    //console.log("[PASTE-DEBUG] Cursore libero: Converto <br> in <p> per abilitare TAB.");
                     finalHTML = finalHTML.replace(/<br\s*\/?>/gi, '</p><p>');
                     finalHTML = finalHTML.replace(/<p>\s*<\/p>/gi, ''); // Pulisce gli artefatti
+
+                    // Rimuoviamo lo scudo ripristinando i <br> dentro gli span protetti
+                    finalHTML = finalHTML.replace(/%%%BR_SAFE%%%/g, '<br>');
                 }
                 
+                //console.log("[DEBUG-PASTE] HTML finale pronto per l'inserimento:", finalHTML);
                 document.execCommand('insertHTML', false, finalHTML);
                 Editor._ensureLastLineBreak(document.getElementById('noteContent'));
 
@@ -440,15 +489,15 @@ Object.assign(Editor, {
                     WidgetManager.mountAll();
                     Store.triggerAutoSave();
                 }
-                console.log("[PASTE-DEBUG] Deep Sanitization HTML Completata.");
+                //console.log("[PASTE-DEBUG] Deep Sanitization HTML Completata.");
                 
             } finally {
-                console.groupEnd();
+                //console.groupEnd();
             }
         };
 
         if (isHeavyLoad) {
-            console.log("[PASTE-DEBUG] Payload gigante rilevato! Esecuzione deviata su asincrono per non bloccare la UI.");
+            //console.log("[PASTE-DEBUG] Payload gigante rilevato! Esecuzione deviata su asincrono per non bloccare la UI.");
             if (typeof UI !== 'undefined') UI.showToast("⏳ Incollando e ripulendo grande quantità di dati...", "warning");
             setTimeout(processPaste, 50); 
         } else {

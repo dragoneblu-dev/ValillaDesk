@@ -3,17 +3,6 @@
  * Sottomodulo di Editor.
  * Responsabilità: Navigazione complessa del cursore tramite tastiera (Tabulazioni in elenchi e blocchi codice, 
  * Escape intelligente dalla formattazione, Indentazione e Spostamenti geometrici nelle tabelle).
- * 
- * FIX KEYBOARD NAVIGATION: Implementato un motore spaziale a Matrice 2D per il calcolo
- * esatto delle coordinate (X, Y) della griglia della tabella. Questo scavalca
- * definitivamente i bug di salto cursore generati dai tag "colspan" e "rowspan".
- * 
- * FIX CARET ENGINE: Sostituito il calcolo nativo dell'offset con le API Range del browser 
- * per garantire coordinate perfette anche all'interno degli span multipli generati dal syntax highlighter.
- * 
- * FIX VERTICAL ESCAPE (RAYCASTING): Intercettazione del bug di rimbalzo del cursore (Bouncing Caret) 
- * attorno agli elementi inline complessi (Snippet Copiabili). Utilizza API di Raycasting per preservare 
- * l'allineamento orizzontale del cursore tra una riga e l'altra, o un Fallback per garantire l'uscita dal blocco.
  */
 
 Object.assign(Editor, {
@@ -678,55 +667,12 @@ Object.assign(Editor, {
     },
 
     outdentStandardListItem: (liNode) => {
-        let parentList = liNode.parentNode;
-        if (!parentList || !['UL', 'OL'].includes(parentList.tagName)) return;
-
-        // Se l'elemento è già indentato in un sotto-elenco
-        const grandParentLi = parentList.parentElement.closest('li');
-        if (grandParentLi) {
-            const sel = window.getSelection();
-            const rng = document.createRange();
-            rng.selectNodeContents(liNode);
-            sel.removeAllRanges();
-            sel.addRange(rng);
-            document.execCommand('outdent', false, null);
-            return;
-        }
-
-        // DOM HEALING: Srotola le liste dal tag P in cui il browser a volte le avvolge
-        let wrapper = parentList.parentNode;
-        if (wrapper && wrapper.tagName === 'P') {
-            const grandParent = wrapper.parentNode;
-            grandParent.insertBefore(parentList, wrapper);
-            if (wrapper.textContent.trim() === '' && wrapper.children.length === 0) {
-                wrapper.remove();
-            }
-            wrapper = grandParent; // Il vero wrapper ora è il contenitore pulito
-        }
-
-        const p = document.createElement('p');
-        while (liNode.firstChild) {
-            p.appendChild(liNode.firstChild);
-        }
-
-        if (!liNode.previousElementSibling) {
-            wrapper.insertBefore(p, parentList);
-        } else if (!liNode.nextElementSibling) {
-            wrapper.insertBefore(p, parentList.nextSibling);
-        } else {
-            // Spezza la lista in due se stiamo "tirando fuori" l'elemento centrale
-            const newList = document.createElement(parentList.tagName);
-            if (parentList.hasAttribute('type')) newList.setAttribute('type', parentList.getAttribute('type'));
-            
-            while (liNode.nextSibling) {
-                newList.appendChild(liNode.nextSibling);
-            }
-            
-            wrapper.insertBefore(p, parentList.nextSibling);
-            wrapper.insertBefore(newList, p.nextSibling);
-        }
-
-        liNode.remove();
-        if (parentList.children.length === 0) parentList.remove();
+        // FIX SHIFT-TAB: Nessun parsing distruttivo. Delegato interamente al browser.
+        const sel = window.getSelection();
+        const rng = document.createRange();
+        rng.selectNodeContents(liNode);
+        sel.removeAllRanges();
+        sel.addRange(rng);
+        document.execCommand('outdent', false, null);
     }
 });

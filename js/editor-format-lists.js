@@ -2,6 +2,8 @@
  * editor-format-lists.js
  * Sottomodulo di Editor.
  * Gestione strutturale delle Liste e delle Checklist (Indent/Outdent).
+ * FIX SHIFT-TAB: Rimossa la logica manuale di estrazione DOM che causava l'errata conversione
+ * degli elenchi puntati (<li>) in paragrafi (<p>) in presenza di gerarchie irregolari.
  */
 
 Object.assign(Editor, {
@@ -167,52 +169,17 @@ Object.assign(Editor, {
     },
 
     outdentStandardListItem: (liNode) => {
-        let parentList = liNode.parentNode;
-        if (!parentList || !['UL', 'OL'].includes(parentList.tagName)) return;
-
-        const grandParentLi = parentList.parentElement.closest('li');
-        if (grandParentLi) {
-            const sel = window.getSelection();
-            const rng = document.createRange();
-            rng.selectNodeContents(liNode);
-            sel.removeAllRanges();
-            sel.addRange(rng);
-            document.execCommand('outdent', false, null);
-            return;
-        }
-
-        let wrapper = parentList.parentNode;
-        if (wrapper && wrapper.tagName === 'P') {
-            const grandParent = wrapper.parentNode;
-            grandParent.insertBefore(parentList, wrapper);
-            if (wrapper.textContent.trim() === '' && wrapper.children.length === 0) {
-                wrapper.remove();
-            }
-            wrapper = grandParent; 
-        }
-
-        const p = document.createElement('p');
-        while (liNode.firstChild) {
-            p.appendChild(liNode.firstChild);
-        }
-
-        if (!liNode.previousElementSibling) {
-            wrapper.insertBefore(p, parentList);
-        } else if (!liNode.nextElementSibling) {
-            wrapper.insertBefore(p, parentList.nextSibling);
-        } else {
-            const newList = document.createElement(parentList.tagName);
-            if (parentList.hasAttribute('type')) newList.setAttribute('type', parentList.getAttribute('type'));
-            
-            while (liNode.nextSibling) {
-                newList.appendChild(liNode.nextSibling);
-            }
-            
-            wrapper.insertBefore(p, parentList.nextSibling);
-            wrapper.insertBefore(newList, p.nextSibling);
-        }
-
-        liNode.remove();
-        if (parentList.children.length === 0) parentList.remove();
+        // FIX SHIFT-TAB: Rimosso il parsing manuale del DOM che falliva se il browser
+        // creava liste annidate irregolari (es. ul > ul anziché ul > li > ul).
+        // Deleghiamo interamente l'outdent al motore nativo del browser che gestisce 
+        // perfettamente sia la risalita (un-nesting) che la conversione in paragrafo a livello 0.
+        
+        const sel = window.getSelection();
+        const rng = document.createRange();
+        rng.selectNodeContents(liNode);
+        sel.removeAllRanges();
+        sel.addRange(rng);
+        
+        document.execCommand('outdent', false, null);
     }
 });

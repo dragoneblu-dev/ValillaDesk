@@ -4,6 +4,9 @@
  * Responsabilità: Intercettazione di tasti che distruggono o creano nodi complessi
  * FIX CANCELLAZIONE WIDGET INTERNI: Aggiunto controllo di identità tra widget corrente 
  * e widget bersaglio per permettere l'uso dei tasti Canc e Backspace all'interno delle aree editabili (Es. Colonne).
+ * FIX MERGE INLINE WIDGETS: Intercettazione chirurgica della fusione dei paragrafi tramite Backspace/Canc
+ * utilizzando un DOM TreeWalker assoluto per scavalcare correttamente i confini delle liste (UL/OL) 
+ * proteggendo gli appunti inline e gli snippet copiabili dalla distruzione nativa del browser.
  */
 
 Object.assign(Editor, {
@@ -248,15 +251,19 @@ Object.assign(Editor, {
         const selection = window.getSelection();
         if (!selection.rangeCount) return;
 
+        //console.groupCollapsed('🔴 [DEBUG-BACKSPACE] Avvio Backspace');
+
         if (!selection.isCollapsed) {
             if (!Editor.handleBulkWidgetDeletion()) {
                 e.preventDefault();
+                //console.groupEnd();
                 return;
             }
             e.preventDefault();
             Editor.saveSnapshot();
             document.execCommand('delete', false, null);
             Store.triggerAutoSave();
+            //console.groupEnd();
             return;
         }
 
@@ -265,8 +272,8 @@ Object.assign(Editor, {
 
         const currentWidget = container.nodeType === 3 ? container.parentNode.closest('.adv-widget-shell') : container.closest('.adv-widget-shell');
 
-        if (container.nodeType === 3 && WidgetManager.isProtectedBlock(container.parentNode) && !WidgetManager.isInsideEditableWidgetArea(container.parentNode)) return;
-        if (container.closest && WidgetManager.isProtectedBlock(container) && !WidgetManager.isInsideEditableWidgetArea(container)) return;
+        if (container.nodeType === 3 && WidgetManager.isProtectedBlock(container.parentNode) && !WidgetManager.isInsideEditableWidgetArea(container.parentNode)) { console.groupEnd(); return; }
+        if (container.closest && WidgetManager.isProtectedBlock(container) && !WidgetManager.isInsideEditableWidgetArea(container)) { console.groupEnd(); return; }
 
         const closestLi = container.nodeType === 3 ? container.parentNode.closest('li') : (container.closest ? container.closest('li') : null);
         const closestList = closestLi ? closestLi.parentElement : null;
@@ -319,6 +326,7 @@ Object.assign(Editor, {
                         }
                     }
                 }
+                //console.groupEnd();
                 return;
             }
         }
@@ -327,8 +335,61 @@ Object.assign(Editor, {
         
         if (block && range.startOffset === 0 && (container.nodeType !== 3 || container.previousSibling === null)) {
             const isEmptyBlock = block.textContent.replace(/[\u200B\n\r]/g, '').trim() === '';
-            let prevNode = block.previousSibling;
-            while (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim() === '') prevNode = prevNode.previousSibling;
+            
+            // FIX TREEWALKER: Usa un esploratore del DOM per trovare il VERO nodo precedente, 
+            // scavalcando le barriere strutturali (es. List item dentro a un UL/OL).
+            let prevNode = null;
+            const walker = document.createTreeWalker(document.getElementById('noteContent'), NodeFilter.SHOW_ELEMENT, null, false);
+            walker.currentNode = block;
+            let pNode;
+            while ((pNode = walker.previousNode())) {
+                if (pNode.id === 'noteContent') continue;
+                if (['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(pNode.tagName)) {
+                    // Preveniamo la fusione in div interni ai Widget (eccetto colonne/tabella editabili)
+                    if (WidgetManager.isProtectedBlock(pNode) && !WidgetManager.isInsideEditableWidgetArea(pNode)) {
+                        prevNode = pNode.closest('.adv-widget-shell');
+                    } else {
+                        prevNode = pNode;
+                    }
+                    break;
+                }
+            }
+
+            //console.log("[DEBUG-BACKSPACE] prevNode individuato per Merge tramite TreeWalker:", prevNode);
+
+            // FIX MANUAL MERGE (BACKSPACE): Se tiriamo su il blocco e il nodo precedente contiene Widget Inline
+            // Fondere nativamente distruggerebbe lo span contenteditable="false". Usiamo il Manual Merge!
+            if (prevNode && ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(prevNode.tagName) && block.querySelector('.adv-inline-shell')) {
+                 e.preventDefault();
+                 Editor.saveSnapshot();
+                 const sel = window.getSelection();
+                 const marker = document.createElement('span');
+                 marker.id = 'manual-merge-marker';
+                 prevNode.appendChild(marker);
+                 
+                 // Travasa i contenuti nel nodo superiore
+                 while(block.firstChild) {
+                     prevNode.appendChild(block.firstChild);
+                 }
+                 const parentList = block.parentNode;
+                 block.remove();
+                 
+                 // Pulisci le liste svuotate
+                 if (parentList && (parentList.tagName === 'UL' || parentList.tagName === 'OL') && parentList.children.length === 0) {
+                     parentList.remove();
+                 }
+
+                 const newRange = document.createRange();
+                 newRange.setStartAfter(marker);
+                 newRange.collapse(true);
+                 sel.removeAllRanges();
+                 sel.addRange(newRange);
+                 marker.remove();
+                 Store.triggerAutoSave();
+                 //console.log("[DEBUG-BACKSPACE] Merge manuale eseguito per proteggere inline widget.");
+                 //console.groupEnd();
+                 return;
+            }
 
             if (prevNode && WidgetManager.isProtectedBlock(prevNode)) {
                 
@@ -336,6 +397,7 @@ Object.assign(Editor, {
                 // allo stesso widget, lasciamo che il browser faccia il suo lavoro nativo.
                 const targetWidget = prevNode.closest('.adv-widget-shell');
                 if (currentWidget && targetWidget && currentWidget === targetWidget) {
+                    //console.groupEnd();
                     return; 
                 }
 
@@ -353,6 +415,7 @@ Object.assign(Editor, {
 
                     block.remove();
                     Store.triggerAutoSave();
+                    //console.groupEnd();
                     return;
                 }
 
@@ -367,24 +430,31 @@ Object.assign(Editor, {
                         Editor.selectedWidget = shell;
                     }
                 }
+                //console.groupEnd();
                 return; 
             }
         }
+        //console.log("[DEBUG-BACKSPACE] Backspace gestito nativamente dal browser");
+        //console.groupEnd();
     },
 
     handleDeleteKey: (e) => {
+        //console.groupCollapsed('🔴 [DEBUG-DELETE] Avvio Tasto Delete (Canc)');
         const selection = window.getSelection();
-        if (!selection.rangeCount) return;
+        if (!selection.rangeCount) { console.groupEnd(); return; }
 
         if (!selection.isCollapsed) {
+            //console.log("[DEBUG-DELETE] Esecuzione Bulk Delete su selezione.");
             if (!Editor.handleBulkWidgetDeletion()) {
                 e.preventDefault();
+                //console.groupEnd();
                 return;
             }
             e.preventDefault();
             Editor.saveSnapshot();
             document.execCommand('delete', false, null);
             Store.triggerAutoSave();
+            //console.groupEnd();
             return;
         }
 
@@ -392,27 +462,26 @@ Object.assign(Editor, {
         let container = range.startContainer;
         let block = container.nodeType === 3 ? container.parentNode.closest('p, div, li, h1, h2, h3') : (container.closest ? container.closest('p, div, li, h1, h2, h3') : null);
         
+        //console.log("[DEBUG-DELETE] Delete su Block:", block);
+
         const currentWidget = container.nodeType === 3 ? container.parentNode.closest('.adv-widget-shell') : container.closest('.adv-widget-shell');
 
         if (block) {
             let isAtEnd = false;
-            let nextNodeForWidgetCheck = null;
             
             if (container.nodeType === 3 && range.startOffset === container.length) {
                 const walker = document.createTreeWalker(document.getElementById('noteContent'), NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null, false);
                 walker.currentNode = container;
-                let nextNode = walker.nextNode();
-                while (nextNode && nextNode.nodeType === 3 && nextNode.textContent.trim() === '') nextNode = walker.nextNode();
+                let nextTextNode = walker.nextNode();
+                while (nextTextNode && nextTextNode.nodeType === 3 && nextTextNode.textContent.trim() === '') nextTextNode = walker.nextNode();
                 
-                // Se è un a capo, lascialo gestire al browser
-                if (nextNode && nextNode.nodeName === 'BR') {
+                // Se c'è un BR nativo che il browser può rimuovere, lasciamo fare a lui
+                if (nextTextNode && nextTextNode.nodeName === 'BR') {
+                    //console.log("[DEBUG-DELETE] Ignoro: sono davanti a un <br>");
+                    //console.groupEnd();
                     return; 
                 }
-
-                if (nextNode && WidgetManager.isProtectedBlock(nextNode)) {
-                    isAtEnd = true;
-                    nextNodeForWidgetCheck = nextNode;
-                }
+                isAtEnd = true;
             } 
             else if (container.nodeType !== 3 && range.startOffset >= container.childNodes.length - 1) {
                 isAtEnd = true;
@@ -422,14 +491,66 @@ Object.assign(Editor, {
             if (isEmptyBlock) isAtEnd = true;
 
             if (isAtEnd) {
-                let nextNode = nextNodeForWidgetCheck || block.nextElementSibling;
-                while (nextNode && nextNode.nodeType === 3 && nextNode.textContent.trim() === '') nextNode = nextNode.nextSibling;
+                // FIX TREEWALKER: Invece di chiedere block.nextElementSibling (che in un LI restituisce null),
+                // usiamo un TreeWalker assoluto per scovare il VERO blocco fisico successivo nel documento!
+                let nextNode = null;
+                const walker = document.createTreeWalker(document.getElementById('noteContent'), NodeFilter.SHOW_ELEMENT, null, false);
+                walker.currentNode = block;
+                let n;
+                while ((n = walker.nextNode())) {
+                    if (['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(n.tagName)) {
+                        // Ci assicuriamo di non prendere un nodo che è in realtà contenuto *dentro* al blocco attuale
+                        if (!block.contains(n)) {
+                            nextNode = n;
+                            break;
+                        }
+                    }
+                }
+
+                //console.log("[DEBUG-DELETE] NextNode individuato per Merge tramite TreeWalker:", nextNode);
+
+                // FIX MANUAL MERGE (DELETE): Se il nodo successivo contiene un widget inline (come un appunto o snippet),
+                // il merge nativo del browser distruggerebbe i tag contenteditable=false. Lo uniamo manualmente!
+                if (nextNode && ['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(nextNode.tagName) && nextNode.querySelector('.adv-inline-shell')) {
+                    e.preventDefault();
+                    Editor.saveSnapshot();
+                    const sel = window.getSelection();
+                    const marker = document.createElement('span');
+                    marker.id = 'manual-merge-marker';
+                    block.appendChild(marker);
+                    
+                    // Travasa tutto il contenuto dal nodo inferiore al blocco attuale
+                    while (nextNode.firstChild) {
+                        block.appendChild(nextNode.firstChild);
+                    }
+                    
+                    // Rimuove il vecchio blocco svuotato, proteggendo le gerarchie delle liste
+                    const parentList = nextNode.parentNode;
+                    nextNode.remove();
+                    if (parentList && (parentList.tagName === 'UL' || parentList.tagName === 'OL') && parentList.children.length === 0) {
+                        parentList.remove();
+                    }
+                    
+                    // Ripristina il cursore esattamente nel punto di fusione
+                    const newRange = document.createRange();
+                    newRange.setStartAfter(marker);
+                    newRange.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(newRange);
+                    marker.remove();
+                    
+                    Store.triggerAutoSave();
+                    //console.log("[DEBUG-DELETE] Merge manuale eseguito con successo per salvare gli inline widget.");
+                    //console.groupEnd();
+                    return;
+                }
 
                 if (nextNode && WidgetManager.isProtectedBlock(nextNode)) {
                     
                     // LA CORREZIONE: Stesso principio del Backspace
                     const targetWidget = nextNode.closest('.adv-widget-shell');
                     if (currentWidget && targetWidget && currentWidget === targetWidget) {
+                        //console.groupEnd();
                         return; 
                     }
 
@@ -447,6 +568,7 @@ Object.assign(Editor, {
 
                         block.remove();
                         Store.triggerAutoSave();
+                        //console.groupEnd();
                         return;
                     }
 
@@ -461,9 +583,12 @@ Object.assign(Editor, {
                             Editor.selectedWidget = shell;
                         }
                     }
+                    //console.groupEnd();
                     return; 
                 }
             }
         }
+        //console.log("[DEBUG-DELETE] Delete gestito nativamente dal browser");
+        //console.groupEnd();
     }
 });

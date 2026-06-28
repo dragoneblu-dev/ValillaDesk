@@ -1,15 +1,12 @@
 /**
  * EditorCore.js
  * Inizializzazione editor e core engine (Caret, Boundaries e Sanificazione JSON).
+ * FIX GARBAGE COLLECTOR: Ora scansiona rigorosamente anche i Template.
  * FIX HYDRATION: Re-idratazione immediata post-salvataggio.
- * FIX FOCUS INPUT: Aggiunta esenzione in handleSmartClickEscape per preservare il focus delle search bar.
- * FIX CARET ENGINE: Introdotto _getTextAndCaret globale per la mappatura perfetta cursore/testo.
- * FIX GARBAGE COLLECTOR: Ora scansiona rigorosamente anche i Template (inclusi i widget nidificati)
- * per impedire l'eliminazione fisica di immagini e audio validi dal disco.
- * FIX ZWS POLLUTION: Implementato Garbage Collector in tempo reale in sanitizeContent per estirpare 
- * gli Zero-Width Space (\u200B) orfani dal DOM, pur proteggendo quelli necessari all'infrastruttura Widget.
+ * FIX ZWS POLLUTION: Estirpazione degli Zero-Width Space (\u200B) orfani dal DOM.
  * FIX DRAG & DROP: Inseriti .adv-board-card e gli eventi calendario nella Whitelist di handleSmartClickEscape
- * per impedire che il preventDefault() sul mousedown blocchi la sequenza di Drag HTML5 nativa.
+ * FIX APPUNTI CORROTTI: minifyHTMLForStorage ora appiattisce retroattivamente i vecchi appunti inline 
+ * salvati erroneamente nel JSON con dei <div>, curando il file all'istante.
  */
 
 const Editor = {
@@ -96,7 +93,7 @@ const Editor = {
     handleSmartClickEscape: (e) => {
         if (!AppState.isEditMode) return;
         
-        // FIX FOCUS: Non impedire MAI il click nativo su campi di input o textarea (Es. Barra di ricerca Diario)
+        // FIX FOCUS: Non impedire MAI il click nativo su campi di input o textarea
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
         const shell = e.target.closest('.adv-widget-shell, .adv-inline-shell');
@@ -108,11 +105,8 @@ const Editor = {
             return;
         }
 
-        // LA SOLUZIONE: Aggiunti .adv-board-card e i blocchi del calendario alla Whitelist.
-        // Se il click avviene su questi elementi (anche nelle loro parti non testuali), 
-        // l'editor ignora il click, permettendo al browser di continuare e innescare il dragstart.
+        // Whitelist per permettere l'interazione HTML5 Drag e Click su controlli di modulo
         if (e.target.closest('th, td, .widget-drag-handle, .widget-options-btn, .adv-tool-btn, .adv-add-btn, .adv-icon-btn, .adv-table-header, .btn, .action-btn-run, .adv-btn-icon-trigger, .snippet-copy-btn, .inline-note-marker, .adv-board-card, .adv-cal-event-std, .adv-cal-event-abs')) {
-            console.log("🟢 [SMART-ESCAPE] Click ignorato per consentire interazione nativa (Drag/Click).");
             return;
         }
 
@@ -125,8 +119,6 @@ const Editor = {
 
         let targetNode = isBottomOrRightHalf ? shell.nextSibling : shell.previousSibling;
         
-        // Per "evadere" dal widget se c'è un nodo testo vicino ci posizioniamo il cursore, altrimenti la selezione nativa
-        // del browser farà il suo corso senza corrompere il documento.
         if (targetNode && targetNode.nodeType === 3) {
             const sel = window.getSelection();
             const range = document.createRange();
@@ -415,6 +407,23 @@ const Editor = {
         const temp = document.createElement('div');
         temp.innerHTML = htmlString;
 
+        // FIX CURA APPUNTI: Prima di minificare, ispezioniamo tutti gli appunti inline nel JSON.
+        // Se nel passato (Bug noto) si erano salvati dei <p> o <div> al loro interno, li convertiamo in <br>
+        // riparando in modo automatico l'intera applicazione in modo retroattivo.
+        temp.querySelectorAll('.inline-note-data').forEach(dataSpan => {
+            let inner = dataSpan.innerHTML;
+            if (/<(div|p|ul|ol|li)[^>]*>/i.test(inner)) {
+                inner = inner.replace(/<div[^>]*>/gi, '<br>')
+                             .replace(/<\/div>/gi, '')
+                             .replace(/<p[^>]*>/gi, '<br>')
+                             .replace(/<\/p>/gi, '')
+                             .replace(/<li[^>]*>/gi, '<br>• ')
+                             .replace(/<\/li>/gi, '')
+                             .replace(/<\/?(ul|ol|h[1-6]|blockquote)[^>]*>/gi, '');
+                dataSpan.innerHTML = inner.replace(/^(<br\s*\/?>)+/i, '');
+            }
+        });
+
         // Rimozione fonti dinamiche e iframes per prevenire Network Errors e CORS in background
         temp.querySelectorAll('iframe').forEach(ifr => {
             const src = ifr.getAttribute('src');
@@ -440,7 +449,7 @@ const Editor = {
             }
         });
 
-        temp.querySelectorAll('#editor-undo-marker, .adv-multi-cursor, #tab-start-marker, #tab-end-marker').forEach(g => {
+        temp.querySelectorAll('#editor-undo-marker, .adv-multi-cursor, #tab-start-marker, #tab-end-marker, #history-undo-marker-temp').forEach(g => {
             const parent = g.parentNode;
             while (g.firstChild) parent.insertBefore(g.firstChild, g);
             parent.removeChild(g);
@@ -462,7 +471,6 @@ const Editor = {
             const innerHTML = el.innerHTML;
             const cleanText = el.innerText.replace(/\u200B/g, '').trim();
 
-            // Protegge iframe e audio dalle cancellazioni del normalizzatore
             if (innerHTML === '' && cleanText === '') {
                 if (!el.querySelector('img') && !el.querySelector('audio') && !el.querySelector('iframe')) {
                     el.innerHTML = '<br>';
@@ -533,21 +541,21 @@ const Editor = {
             }
         });
 
-        editor.querySelectorAll(WidgetManager.blockSelector).forEach(el => {
+        editor.querySelectorAll(WidgetManager.blockSelector + ', ' + WidgetManager.inlineSelector).forEach(el => {
             el.setAttribute('contenteditable', 'false');
             el.style.boxShadow = ''; el.style.transition = '';
             el.classList.remove('adv-widget-selected');
             if (el.getAttribute('style') === '') el.removeAttribute('style');
         });
         
-        editor.querySelectorAll('.code-content, .inline-note-marker').forEach(el => el.setAttribute('contenteditable', 'false'));
+        editor.querySelectorAll('.code-content').forEach(el => el.setAttribute('contenteditable', 'false'));
 
         editor.querySelectorAll('h1, h2, h3, .adv-bookmark-marker svg').forEach(el => {
             el.style.backgroundColor = ''; el.style.transition = ''; el.style.transform = ''; el.style.color = '';
             if (el.getAttribute('style') === '') el.removeAttribute('style');
         });
 
-        const ghosts = editor.querySelectorAll('#editor-undo-marker, .adv-multi-cursor, #tab-start-marker, #tab-end-marker');
+        const ghosts = editor.querySelectorAll('#editor-undo-marker, .adv-multi-cursor, #tab-start-marker, #tab-end-marker, #history-undo-marker-temp');
         ghosts.forEach(g => {
             const parent = g.parentNode;
             while (g.firstChild) parent.insertBefore(g.firstChild, g);
@@ -561,21 +569,15 @@ const Editor = {
             }
         });
 
-        // -------------------------------------------------------------
-        // FIX ZWS POLLUTION: Garbage Collector in tempo reale per rimuovere
-        // gli Zero-Width Space (\u200B) non più necessari dopo l'eliminazione dei Link.
-        // -------------------------------------------------------------
         const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
         let node;
         const nodesToRemove = [];
         
         while ((node = walker.nextNode())) {
             if (node.nodeValue.includes('\u200B')) {
-                // Se il nodo contiene testo nomale mischiato allo ZWS (es. typing sporco), pulisce solo lo ZWS
                 if (node.nodeValue !== '\u200B') {
                     node.nodeValue = node.nodeValue.replace(/\u200B/g, '');
                 } else {
-                    // Se il nodo è ESATTAMENTE un \u200B, controlla se è essenziale per la struttura.
                     const prev = node.previousSibling;
                     const next = node.nextSibling;
                     const parent = node.parentNode;
@@ -592,14 +594,11 @@ const Editor = {
             if (node.nodeValue.includes('\u00A0\u00A0')) node.nodeValue = node.nodeValue.replace(/\u00A0{2,}/g, ' ');
         }
         
-        // Purgiamo i nodi orfani
         nodesToRemove.forEach(n => n.remove());
 
         editor.normalize();
         Editor._normalizeEmptyBlocks(editor);
 
-        // Reidrata immediatamente dopo la pulizia 
-        // per riaccendere l'immagine (o iframe) nell'editor senza dover ricaricare la pagina
         Editor.hydrateMedia(editor);
 
         if (AppState.currentNoteId) {
@@ -706,7 +705,6 @@ const Editor = {
             TableManager.editCurrentTable(el);
         } else if (el.tagName === 'UL' || el.tagName === 'OL') {
             if (typeof UI !== 'undefined' && UI.Menu) {
-                // Simulate click on the list toolbar button
                 const btn = document.getElementById('btnListMenu');
                 if (btn) Editor.openListMenu(null, 'btnListMenu');
             }
@@ -717,7 +715,6 @@ const Editor = {
         const tb = document.getElementById('editorToolbar');
         if (!tb) return;
         
-        // I pulsanti Undo/Redo vengono gestiti in esclusiva da Editor.updateUndoRedoUI() in history
         const buttons = tb.querySelectorAll('button:not([title*="Annulla Ultima"]):not([title*="Ripeti ("]):not([title="Maiuscolo/Minuscolo"])');
         const dropdowns = tb.querySelectorAll('.color-picker-group');
 

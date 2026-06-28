@@ -1,14 +1,6 @@
 /**
  * EditorHistory.js
  * Mixin per Undo, Redo e Snapshot tracking con Tokenizzazione Immagini e Audio.
- * FIX UX: Aggiunto updateUndoRedoUI per disabilitare visivamente i tasti se le code sono vuote.
- * FIX CARET: Utilizzo di un ID marcatore sicuro per eludere il minificatore e Range.cloneContents per il calcolo assoluto.
- * FIX UNDO LOOP: Implementata logica di confronto testuale puro (cleanForComparison) per ripristino in singolo click.
- * FIX CODE BLOCKS: Codifica Base64 dello stato in RAM per prevenire la corruzione JSON causata dalle andate a capo.
- * FEAT DEBUG: Inseriti log console completi per analizzare le transizioni dello stack.
- * REFACTOR: Unificato il sistema di risoluzione degli assets orfani (Audio e Immagini)
- * riducendo i cicli sulla memoria RAM del 50% e sfoltendo codice duplicato.
- * FIX REGRESSIONE MIME: Corretto il tipo mime nella Regex ("image" per il tag "img").
  */
 Object.assign(Editor, {
     undoStack: [],
@@ -49,7 +41,6 @@ Object.assign(Editor, {
     },
 
     clearHistory: () => {
-        //console.log("🟧 [HISTORY-DEBUG] clearHistory: Azzeramento totale dello stack");
         Editor.undoStack = [];
         Editor.redoStack = [];
         Editor.isTyping = false;
@@ -78,7 +69,6 @@ Object.assign(Editor, {
             }
             return pos;
         } catch (e) {
-            console.error("🔴 [CARET-DEBUG] Errore critico nel calcolo offset cursore:", e);
             return 0;
         }
     },
@@ -153,7 +143,7 @@ Object.assign(Editor, {
             sel.removeAllRanges();
             sel.addRange(range);
         } catch (e) {
-            console.error("[UNDO-DEBUG] Errore in setCodeOffset:", e);
+            //console.error("[UNDO-DEBUG] Errore in setCodeOffset:", e);
         }
     },
 
@@ -161,29 +151,24 @@ Object.assign(Editor, {
         const wordBoundaries = [' ', '.', ',', ';', ':', '!', '?', 'Enter', 'Tab'];
 
         if (wordBoundaries.includes(key)) {
-            //console.log(`🟦 [HISTORY-DEBUG] Word boundary rilevata: '${key}'. Forzo salvataggio immediato.`);
             Editor.saveSnapshot();
             Editor.isTyping = false;
         } else {
             if (!Editor.isTyping) {
-                //console.log(`🟦 [HISTORY-DEBUG] Inizio digitazione nuova parola. Salvataggio pre-modifica.`);
                 Editor.saveSnapshot();
                 Editor.isTyping = true;
             }
             clearTimeout(Editor.typingTimer);
             Editor.typingTimer = setTimeout(() => {
-                //console.log(`🟦 [HISTORY-DEBUG] Fine timer inattività (600ms). Chiusura ciclo di scrittura.`);
                 Editor.saveSnapshot();
                 Editor.isTyping = false;
             }, 600); 
         }
     },
 
-    // REFACTOR: Metodo unificato per trovare file multimediali orfani
     _resolveOrphanedAsset: (assetId, tag, attrName) => {
         if (!AppState.notes) return null;
         
-        // FIX MIME TYPE: Se il tag è "img", il prefisso base64 è "image", altrimenti "audio"
         const mime = tag === 'img' ? 'image' : 'audio';
 
         for (let i = 0; i < AppState.notes.length; i++) {
@@ -298,6 +283,8 @@ Object.assign(Editor, {
         const editor = document.getElementById('noteContent');
         if (!editor) return;
 
+        //console.groupCollapsed('🟡 [DEBUG-HISTORY] Creazione Snapshot');
+
         let markerInserted = false;
         let codeBlockCaret = false;
         let activeCodeBlockWrapper = null;
@@ -320,16 +307,26 @@ Object.assign(Editor, {
             } else {
                 try {
                     const range = sel.getRangeAt(0).cloneRange();
+                    
+                    // FIX SNIPPET HISTORY: Assicura l'iniezione nel text span per evitare corruzione
+                    const widgetTextSpan = range.startContainer.nodeType === 3 ? range.startContainer.parentNode.closest('.snippet-text, .inline-note-data') : range.startContainer.closest('.snippet-text, .inline-note-data');
+                    
                     const marker = document.createElement('span');
-                    // FIX: Uso un ID non bloccato dal minificatore per conservare il cursore (Non usare editor-undo-marker)
                     marker.id = 'history-undo-marker-temp';
-                    range.insertNode(marker);
-                    markerInserted = true;
-                } catch (e) { }
+                    
+                    if (widgetTextSpan) {
+                        //console.log("[DEBUG-HISTORY] Iniezione marker in area ristretta:", widgetTextSpan);
+                    }
+                        range.insertNode(marker);
+                        markerInserted = true;
+                } catch (e) { 
+                    console.error("[DEBUG-HISTORY] Errore iniezione marker:", e);
+                }
             }
         }
 
         const htmlToSave = Editor._buildHistorySnapshot(editor);
+        //console.log("[DEBUG-HISTORY] HTML che finisce nello Stack:", htmlToSave);
 
         if (markerInserted) {
             const marker = document.getElementById('history-undo-marker-temp');
@@ -345,16 +342,17 @@ Object.assign(Editor, {
         }
 
         if (Editor.undoStack.length > 0 && Editor.undoStack[Editor.undoStack.length - 1] === htmlToSave) {
+            //console.log("[DEBUG-HISTORY] Snapshot ignorato: identico al precedente.");
+            //console.groupEnd();
             return;
         }
 
         Editor.undoStack.push(htmlToSave);
-        //console.log(`🟩 [HISTORY-DEBUG] saveSnapshot: Snapshot salvato. Elementi in stack Undo: ${Editor.undoStack.length}`);
-        
         if (Editor.undoStack.length > 200) Editor.undoStack.shift();
         Editor.redoStack = [];
         
         Editor.updateUndoRedoUI();
+        //console.groupEnd();
     },
 
     _restoreSnapshotWithCursor: (htmlData) => {
@@ -402,7 +400,9 @@ Object.assign(Editor, {
                     const trueId = wrapper.id.split('_cited_')[0];
                     if (!AppState.databases) AppState.databases = {};
                     AppState.databases[trueId] = stateObj; // Idrata la RAM
-                } catch(e) { console.error("[HISTORY-DEBUG] Errore decodifica Base64 state:", e); }
+                } catch(e) { 
+                    //console.error("[HISTORY-DEBUG] Errore decodifica Base64 state:", e); 
+                }
                 wrapper.removeAttribute('data-b64-state');
             }
         });
@@ -487,6 +487,7 @@ Object.assign(Editor, {
 
         if (Editor.undoStack.length > 0) {
             const editor = document.getElementById('noteContent');
+            //console.groupCollapsed('🟡 [DEBUG-HISTORY] Esecuzione UNDO');
 
             let markerInserted = false;
             let codeBlockCaret = false;
@@ -518,7 +519,6 @@ Object.assign(Editor, {
 
             const htmlToSaveForRedo = Editor._buildHistorySnapshot(editor);
             Editor.redoStack.push(htmlToSaveForRedo);
-            console.log(`🟨 [HISTORY-DEBUG] UNDO: Stato attuale salvato nello stack REDO.`);
 
             if (markerInserted) {
                 const marker = document.getElementById('history-undo-marker-temp');
@@ -533,6 +533,7 @@ Object.assign(Editor, {
             }
 
             let snap = Editor.undoStack.pop();
+            //console.log("[DEBUG-HISTORY] Snapshot Estratto da Ripristinare:", snap);
             
             // FUNZIONE HELPER: Pulisce via solo i marcatori di history per fare un paragone onesto del DOM nudo
             const cleanForComparison = (html) => {
@@ -544,18 +545,17 @@ Object.assign(Editor, {
             const currentHtmlClean = cleanForComparison(Editor._buildHistorySnapshot(editor));
             const snapHtmlClean = cleanForComparison(snap);
             
-            console.log(`🟨 [HISTORY-DEBUG] UNDO: Confronto DOM attuale pulito vs Snapshot estratto pulito.`);
-            
             if (currentHtmlClean === snapHtmlClean && Editor.undoStack.length > 0) {
-                console.log(`🟨 [HISTORY-DEBUG] UNDO: Snapshot identico al DOM attuale (stesso testo, solo spostamento cursore). Eseguo pop() secondario per tornare veramente indietro.`);
+                //console.log("[DEBUG-HISTORY] Pop secondario perché il top dello stack coincide con il dom attuale.");
                 snap = Editor.undoStack.pop();
             }
 
             Editor._restoreSnapshotWithCursor(snap);
             Editor.updateToolbarFormatting();
             Editor.updateUndoRedoUI();
+            //console.groupEnd();
         } else {
-            console.log(`🟥 [HISTORY-DEBUG] UNDO fallito: stack vuoto.`);
+            //console.log(`🟥 [DEBUG-HISTORY] UNDO fallito: stack vuoto.`);
         }
     },
 
@@ -569,6 +569,7 @@ Object.assign(Editor, {
 
         if (Editor.redoStack.length > 0) {
             const editor = document.getElementById('noteContent');
+            //console.groupCollapsed('🟡 [DEBUG-HISTORY] Esecuzione REDO');
 
             let markerInserted = false;
             let codeBlockCaret = false;
@@ -600,7 +601,6 @@ Object.assign(Editor, {
 
             const htmlToSaveForUndo = Editor._buildHistorySnapshot(editor);
             Editor.undoStack.push(htmlToSaveForUndo);
-            console.log(`🟨 [HISTORY-DEBUG] REDO: Stato attuale salvato nello stack UNDO.`);
 
             if (markerInserted) {
                 const marker = document.getElementById('history-undo-marker-temp');
@@ -618,8 +618,9 @@ Object.assign(Editor, {
             Editor._restoreSnapshotWithCursor(snap);
             Editor.updateToolbarFormatting();
             Editor.updateUndoRedoUI();
+            //console.groupEnd();
         } else {
-            console.log(`🟥 [HISTORY-DEBUG] REDO fallito: stack vuoto.`);
+            //console.log(`🟥 [DEBUG-HISTORY] REDO fallito: stack vuoto.`);
         }
     }
 });
