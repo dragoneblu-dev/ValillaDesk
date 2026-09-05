@@ -14,43 +14,6 @@ window.UI = {
         }
     },
 
-    // --- NUOVO: Gestore Dock Destra/Sinistra per il Drawer ---
-    toggleDrawerDock: () => {
-        const drawer = document.getElementById('advGlobalDrawer');
-        if (drawer) {
-            drawer.classList.toggle('dock-right');
-            const isRight = drawer.classList.contains('dock-right');
-            localStorage.setItem('pronotes_drawer_dock', isRight ? 'right' : 'left');
-            
-            const btn = document.getElementById('advDrawerDockBtn');
-            if (btn) {
-                btn.innerHTML = isRight 
-                    ? '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M15 18l-6-6 6-6"/></svg>' 
-                    : '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M9 18l6-6-6-6"/></svg>';
-            }
-        }
-    },
-
-    // --- NUOVO: Gestore Ghost Mode (Modalità X-Ray) ---
-    toggleDrawerGhost: () => {
-        const drawer = document.getElementById('advGlobalDrawer');
-        if (drawer) {
-            drawer.classList.toggle('ghost-mode');
-            const btn = document.getElementById('advDrawerGhostBtn');
-            if (btn) {
-                if (drawer.classList.contains('ghost-mode')) {
-                    btn.innerHTML = typeof Icons !== 'undefined' ? Icons.eyeOff : '<s>👁</s>';
-                    btn.classList.add('active');
-                    btn.style.color = 'var(--accent-color)';
-                } else {
-                    btn.innerHTML = typeof Icons !== 'undefined' ? Icons.eye : '👁';
-                    btn.classList.remove('active');
-                    btn.style.color = '';
-                }
-            }
-        }
-    },
-
     goHome: () => {
         AppState.isSwitchingNote = true;
         if (typeof UI.updateCurrentNoteTimer !== 'undefined') clearTimeout(UI.updateCurrentNoteTimer);
@@ -117,8 +80,12 @@ window.UI = {
             el.textContent = '⚠️ Salva File (Solo RAM)';
             el.classList.add('status-error');
             el.style.cursor = 'pointer';
-            el.title = 'I dati sono salvati solo nella memoria temporanea. Clicca per salvare su disco.';
-            el.onclick = () => Store.saveAs();
+            el.title = 'I dati sono salvati solo nella memoria temporanea. Clicca per scegliere una cartella e salvare l\'intero Workspace su disco.';
+            el.onclick = () => {
+                if (typeof Store !== 'undefined' && Store.createWorkspace) {
+                    Store.createWorkspace(false);
+                }
+            };
         }
     },
 

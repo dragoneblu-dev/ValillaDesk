@@ -2,11 +2,89 @@
  * ui-notes-lifecycle.js
  * Sottomodulo di UI.
  * Gestione essenziale del ciclo di vita della nota: Selezione, Creazione, Home, Salto al Widget.
+ * Gestione sicura e visiva delle note visualizzate dal Cestino (Read-Only Guard, Danger Banner e Restore).
  */
 
 Object.assign(UI, {
     updateCurrentNoteTimer: null,
     _lastHighlightedWidget: null,
+
+    restoreNoteFromBanner: (noteId) => {
+        if (typeof UI.Trash !== 'undefined' && typeof UI.Trash.restore === 'function') {
+            UI.Trash.restore(noteId);
+            UI.closeDrawer();
+            UI.selectNote(noteId);
+        }
+    },
+
+    _updateTrashedNoteUI: (note) => {
+        const editorScrollContent = document.getElementById('editorScrollContent');
+        const titleInput = document.getElementById('noteTitle');
+        const editToggleBtn = document.getElementById('editToggleBtn');
+        let banner = document.getElementById('trashedNoteWarningBanner');
+
+        if (note && note.deletedAt) {
+            // 1. Iniezione o visualizzazione del Banner di Pericolo
+            if (!banner && editorScrollContent && titleInput) {
+                banner = document.createElement('div');
+                banner.id = 'trashedNoteWarningBanner';
+                banner.style.cssText = `
+                    background: rgba(239, 68, 68, 0.08);
+                    border: 1px solid var(--danger-color);
+                    border-radius: 6px;
+                    padding: 10px 15px;
+                    margin-bottom: 15px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
+                    width: 100%;
+                    max-width: var(--page-max-width);
+                    margin-left: auto;
+                    margin-right: auto;
+                    box-sizing: border-box;
+                `;
+                editorScrollContent.insertBefore(banner, titleInput);
+            }
+
+            if (banner) {
+                banner.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px; color: var(--danger-color); font-weight: bold; font-size: 0.85rem;">
+                        <span style="display: inline-flex;">${typeof Icons !== 'undefined' ? Icons.trash : '🗑️'}</span>
+                        <span>Questa nota si trova nel Cestino (Sola Lettura). I database al suo interno continuano a funzionare per i collegamenti esterni.</span>
+                    </div>
+                    <button class="btn" style="background: var(--danger-color); color: white; border: none; padding: 4px 10px; font-weight: bold; cursor: pointer; flex-shrink: 0;" onclick="UI.restoreNoteFromBanner('${note.id}')">
+                        <span style="display: inline-flex; align-items: center; gap: 4px;">${typeof Icons !== 'undefined' ? Icons.restore : '↺'} Ripristina Nota</span>
+                    </button>
+                `;
+                banner.style.display = 'flex';
+            }
+
+            // 2. Styling rosso del Titolo e blocco scrittura
+            if (titleInput) {
+                titleInput.style.color = 'var(--danger-color)';
+                titleInput.setAttribute('readonly', 'true');
+            }
+
+            // 3. Occultamento pulsante Modifica nell'Header
+            if (editToggleBtn) {
+                editToggleBtn.style.display = 'none';
+            }
+
+        } else {
+            // Rimozione del banner e ripristino stili per note attive
+            if (banner) {
+                banner.style.display = 'none';
+                banner.innerHTML = '';
+            }
+            if (titleInput) {
+                titleInput.style.color = '';
+            }
+            if (editToggleBtn) {
+                editToggleBtn.style.display = '';
+            }
+        }
+    },
 
     addNote: (parentId = null) => {
         AppState.isSwitchingNote = true;
@@ -102,7 +180,7 @@ Object.assign(UI, {
                 }
             }
             
-            // GARBAGE COLLECTION: Azzera la memoria RAM e scansiona il disco!
+            // GARBAGE COLLECTION: Azzera la memoria RAM e scansiona il disco
             if (typeof Editor !== 'undefined') Editor.clearHistory();
             if (typeof Store !== 'undefined') {
                 Store.executePhysicalGarbageCollection();
@@ -132,23 +210,28 @@ Object.assign(UI, {
             Editor.clearHistory();
         }
 
-        if (!AppState.continuousEditMode) {
+        const note = Store.getNote(id);
+        if (!note) { AppState.isSwitchingNote = false; return; }
+
+        const isTrashed = !!note.deletedAt;
+
+        if (isTrashed || !AppState.continuousEditMode) {
             AppState.isEditMode = false;
         }
 
         AppState.currentNoteId = id;
-        const note = Store.getNote(id);
-        if (!note) { AppState.isSwitchingNote = false; return; }
 
-        // NAVIGAZIONE LINK: Apriamo forzatamente l'albero per rivelare la nota di destinazione
-        let currParentId = note.parentId;
-        while(currParentId) {
-            let pNote = Store.getNote(currParentId);
-            if(pNote) {
-                pNote.expanded = true;
-                currParentId = pNote.parentId;
-            } else {
-                break;
+        // NAVIGAZIONE LINK: Apriamo forzatamente l'albero per rivelare la nota di destinazione se non cestinata
+        if (!isTrashed) {
+            let currParentId = note.parentId;
+            while(currParentId) {
+                let pNote = Store.getNote(currParentId);
+                if(pNote) {
+                    pNote.expanded = true;
+                    currParentId = pNote.parentId;
+                } else {
+                    break;
+                }
             }
         }
 
@@ -166,7 +249,7 @@ Object.assign(UI, {
             titleInput.onkeydown = (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    if (!AppState.isEditMode) return;
+                    if (!AppState.isEditMode || isTrashed) return;
                     
                     const editorEl = document.getElementById('noteContent');
                     if (editorEl) {
@@ -250,7 +333,7 @@ Object.assign(UI, {
             if (AppState.noWrapMode) contentEl.classList.add('no-wrap');
             else contentEl.classList.remove('no-wrap');
 
-            UI.toggleEditMode(AppState.continuousEditMode ? true : false);
+            UI.toggleEditMode((!isTrashed && AppState.continuousEditMode) ? true : false);
 
             if (typeof CitationManager !== 'undefined') CitationManager.renderLiveCitations();
 
@@ -260,6 +343,9 @@ Object.assign(UI, {
 
             if (typeof Editor !== 'undefined' && Editor.saveSnapshot) Editor.saveSnapshot();
         }
+
+        // Aggiornamento interfaccia per note cestinate o attive
+        UI._updateTrashedNoteUI(note);
 
         UI.renderInlineFootnotes();
         UI.updateBreadcrumb(note);
@@ -393,6 +479,7 @@ Object.assign(UI, {
 
         document.querySelectorAll('.node-content').forEach(el => el.classList.remove('active'));
 
+        UI._updateTrashedNoteUI(null);
         UI.showEditor(false);
         if (typeof UI.Minimap !== 'undefined') UI.Minimap.sync(); 
         
@@ -405,6 +492,8 @@ Object.assign(UI, {
         if (!AppState.currentNoteId) return;
 
         const note = Store.getNote(AppState.currentNoteId);
+        if (!note || note.deletedAt) return; // Blocco modifiche su note cestinate
+
         const titleInput = document.getElementById('noteTitle');
         if (titleInput) note.title = titleInput.value;
 
@@ -465,6 +554,7 @@ Object.assign(UI, {
         if (!AppState.currentNoteId) return; 
         
         const note = Store.getNote(AppState.currentNoteId);
+        if (!note || note.deletedAt) return;
 
         if (!confirm("Spostare questa nota e tutte le sue sotto-note nel cestino?")) return;
         
@@ -508,6 +598,8 @@ Object.assign(UI, {
     handleEditorInput: () => {
         if (!AppState.currentNoteId) return;
         const note = Store.getNote(AppState.currentNoteId);
+        if (!note || note.deletedAt) return; // Blocco modifiche su note cestinate
+
         const contentEl = document.getElementById('noteContent');
         
         if (contentEl) note.content = Editor.minifyHTMLForStorage(contentEl.innerHTML);

@@ -1,10 +1,7 @@
 /**
  * ui-tree.js
  * Modulo dedicato al DOM dell'albero gerarchico laterale e Drag&Drop delle Note.
- * FIX FILTRI: Il motore controlla ora gli activePropertyFilters con la logica *EXISTS* e match inclusivo.
- * FEAT UX: Aggiunto indicatore visivo leggero per i Timer dei Segnalibri direttamente nell'albero.
- * FIX COLLAPSE BUG: Unificata la logica di calcolo dei figli (Sotto-note + TOC + DB) 
- * per garantire che la freccetta di espansione agisca su un unico blocco coerente senza forzature CSS conflittuali.
+ * Rendering reattivo e isolato dei tempi residui per i segnalibri temporizzati.
  */
 
 Object.assign(UI, {
@@ -278,7 +275,6 @@ Object.assign(UI, {
         dbNotes.forEach(note => {
             let noteDirectMatch = true;
 
-            // 1. Controllo Filtri Proprietà (Tag)
             if (activePropFilters.length > 0) {
                 if (!propsDb) {
                     noteDirectMatch = false;
@@ -290,24 +286,20 @@ Object.assign(UI, {
                         const satisfiesAll = activePropFilters.every(f => {
                             let cellVal = sysRow.cells[f.colId];
                             
-                            // Logica *EXISTS*
                             if (f.realValue === '*EXISTS*') {
                                 if (cellVal === undefined || cellVal === null || cellVal === '') return false;
                                 if (Array.isArray(cellVal) && cellVal.length === 0) return false;
                                 return true;
                             }
 
-                            // Booleani
                             if (typeof f.realValue === 'boolean') {
                                 return (cellVal === true || cellVal === 'true') === f.realValue;
                             }
 
-                            // Array (Multi-select)
                             if (Array.isArray(cellVal)) {
                                 return cellVal.some(v => String(v).toLowerCase() === String(f.realValue).toLowerCase());
                             }
 
-                            // Testo normale
                             return String(cellVal || '').toLowerCase().includes(String(f.realValue).toLowerCase());
                         });
                         if (!satisfiesAll) noteDirectMatch = false;
@@ -340,7 +332,6 @@ Object.assign(UI, {
             }
 
             const isActivePath = AppState.currentNoteId === note.id || UI.isDescendant(note.id, AppState.currentNoteId);
-            
             const shouldRender = (isFiltering && noteDirectMatch) || (!isFiltering && isExplicitDbMode) || (forceExpandForActiveNote && isActivePath);
 
             if (shouldRender) {
@@ -435,7 +426,6 @@ Object.assign(UI, {
         let nodeDirectMatch = true;
         const propsDb = AppState.databases && AppState.databases['SYS_PROPERTIES_DB'];
 
-        // 1. Controllo Filtri Proprietà (Tag)
         if (activePropFilters.length > 0) {
             if (!propsDb) {
                 nodeDirectMatch = false;
@@ -447,24 +437,20 @@ Object.assign(UI, {
                     const satisfiesAll = activePropFilters.every(f => {
                         let cellVal = sysRow.cells[f.colId];
                         
-                        // Logica *EXISTS*
                         if (f.realValue === '*EXISTS*') {
                             if (cellVal === undefined || cellVal === null || cellVal === '') return false;
                             if (Array.isArray(cellVal) && cellVal.length === 0) return false;
                             return true;
                         }
 
-                        // Booleani
                         if (typeof f.realValue === 'boolean') {
                             return (cellVal === true || cellVal === 'true') === f.realValue;
                         }
 
-                        // Array (Multi-select)
                         if (Array.isArray(cellVal)) {
                             return cellVal.some(v => String(v).toLowerCase() === String(f.realValue).toLowerCase());
                         }
 
-                        // Testo normale
                         return String(cellVal || '').toLowerCase().includes(String(f.realValue).toLowerCase());
                     });
                     if (!satisfiesAll) nodeDirectMatch = false;
@@ -497,22 +483,15 @@ Object.assign(UI, {
             if (!node.isMarked) nodeDirectMatch = false;
         }
 
-        // =========================================================
-        // FIX UNIFICAZIONE FIGLI (TOC + DB + Sotto-Note)
-        // Calcoliamo TUTTI i possibili figli prima di generare l'HTML
-        // =========================================================
-
         const childElements = [];
         let hasMatchChild = false;
 
-        // 1. Sotto-Note classiche
         const children = forceRender ? [] : Store.getChildren(node.id).filter(n => !n.isRecordNote);
         children.forEach(c => {
             const el = UI.buildTreeElement(c);
             if (el) { childElements.push(el); hasMatchChild = true; }
         });
 
-        // 2. Database e Widget annidati
         let dbElementsToInject = [];
         let hasMatchDbChild = false;
         
@@ -535,7 +514,6 @@ Object.assign(UI, {
             }
         }
 
-        // 3. Indice Dinamico (TOC) della nota attiva
         let tocHeaders = [];
         if (node.id === AppState.currentNoteId && node.content) {
             const temp = document.createElement('div');
@@ -543,7 +521,6 @@ Object.assign(UI, {
             tocHeaders = temp.querySelectorAll('h2, h3');
         }
 
-        // Se siamo in modalità filtro e questa nota non c'entra nulla, scartala
         if (!isDefaultView) {
             if (!nodeDirectMatch && !hasMatchChild && !hasMatchDbChild) return null;
         }
@@ -599,11 +576,9 @@ Object.assign(UI, {
             }, 250); 
         };
 
-        // CREAZIONE FRECCETTA UNIFICATA
         const toggle = document.createElement('div');
         toggle.className = 'toggle-btn';
 
-        // Regola base di espansione: se node.expanded è false, chiudi. Altrimenti apri (default per TOC e ricerche)
         let isExpanded = node.expanded !== false || !isDefaultView || dbElementsToInject.length > 0;
         
         if (hasAnyChildren) {
@@ -612,7 +587,6 @@ Object.assign(UI, {
             toggle.style.cursor = 'pointer';
             toggle.onclick = (e) => {
                 e.stopPropagation();
-                // Assicura il passaggio di stato in RAM
                 if (node.expanded === undefined) node.expanded = false; 
                 else node.expanded = !node.expanded;
                 UI.renderTree();
@@ -645,6 +619,7 @@ Object.assign(UI, {
 
         title.innerHTML = `<span style="opacity:0.8; ${iconColorStyle}">${customIcon}</span> <span>${node.title || 'Senza Titolo'}</span>`;
 
+        // ISOLAMENTO RIGOROSO: il timer viene calcolato unicamente dal contenuto della specifica nota 'node'
         if (reqBook && !isGhost && node.content) {
             const timerMatch = node.content.match(/data-timer-expire=["'](\d+)["']/);
             if (timerMatch) {
@@ -673,7 +648,6 @@ Object.assign(UI, {
         content.append(toggle, title, addBtn);
         wrapper.appendChild(content);
 
-        // INIEZIONE UNIFICATA DEI FIGLI NEL BLOCCO
         if (hasAnyChildren) {
             const block = document.createElement('div');
             block.className = 'children-block';
@@ -682,7 +656,6 @@ Object.assign(UI, {
             const blockInner = document.createElement('div');
             blockInner.className = 'children-block-inner';
 
-            // 1. Iniezione TOC (in cima)
             if (tocHeaders.length > 0) {
                 const tocContainer = document.createElement('div');
                 tocContainer.className = 'dynamic-toc-container';
@@ -706,7 +679,6 @@ Object.assign(UI, {
                 blockInner.appendChild(tocContainer);
             }
 
-            // 2. Iniezione Database Virtuali e Sotto-note
             dbElementsToInject.forEach(db => blockInner.appendChild(db));
             childElements.forEach(c => blockInner.appendChild(c));
             
@@ -760,7 +732,6 @@ Object.assign(UI, {
         e.preventDefault();
         const targetEl = e.currentTarget;
 
-        // Se stiamo trascinando un Widget/Immagine (Spostamento Inter-Nota)
         if (AppState.draggedBlockId) {
             targetEl.classList.remove('drag-top', 'drag-bottom', 'drag-middle');
             if (targetId !== AppState.currentNoteId) {
@@ -804,7 +775,6 @@ Object.assign(UI, {
         e.preventDefault(); 
         e.stopPropagation(); 
 
-        // Se stiamo rilasciando un Widget/Immagine (Spostamento Inter-Nota)
         if (AppState.draggedBlockId) {
             document.querySelectorAll('.node-content').forEach(el => el.classList.remove('drag-top', 'drag-bottom', 'drag-middle'));
             
@@ -816,7 +786,6 @@ Object.assign(UI, {
             return;
         }
 
-        // Se stiamo rilasciando una Nota
         if (!AppState.draggedNoteId || AppState.draggedNoteId === targetId) return; 
         if (UI.isDescendant(AppState.draggedNoteId, targetId)) return; 
         UI.executeMove(AppState.draggedNoteId, targetId, AppState.dragPosition); 

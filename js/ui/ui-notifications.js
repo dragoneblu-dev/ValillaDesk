@@ -1,12 +1,11 @@
 /**
  * ui-notifications.js
  * Modulo UI per i popup (Toast) temporanei e il Sintetizzatore Audio (Allarmi).
- * FIX: L'HTML del pulsante "Apri Nota" iniettato dal Cron in background viene
- * ora processato e codificato in sicurezza per evitare la rottura degli attributi onclick.
+ * Gestione dello Snooze resiliente per i promemoria da segnalibro tramite registro dati sicuro.
  */
 
 Object.assign(UI, {
-    showToast: (message, type = 'info', isPersistent = false) => {
+    showToast: (message, type = 'info', isPersistent = false, meta = null) => {
         let container = document.getElementById('adv-toast-container');
         if (!container) {
             container = document.createElement('div');
@@ -19,7 +18,7 @@ Object.assign(UI, {
         const isDuplicate = existingToasts.some(t => t.innerText.includes(message.replace(/<[^>]*>?/gm, '')));
         if (isDuplicate) return null;
 
-        const toastId = 'toast_' + Date.now() + Math.random().toString(36).substring(2,5);
+        const toastId = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 5);
         const toast = document.createElement('div');
         toast.className = 'toast-msg';
         toast.id = toastId;
@@ -37,19 +36,16 @@ Object.assign(UI, {
             icon = Icons.alarm; 
             iconColor = '#ef4444'; 
             isPersistent = true;
-            
-            // FIX ALARM: codifica il messaggio intero per non corrompere le virgolette dell'attributo onclick
-            const encodedMsg = encodeURIComponent(message);
 
             extraHTML = `
                 <div style="display:flex; gap:8px; margin-top:10px;">
                     <button class="btn danger" style="padding:4px 10px; font-weight:bold; background:rgba(239,68,68,0.1); color:var(--danger-color); border:1px solid rgba(239,68,68,0.2);" onclick="UI.Alarm.stop('${toastId}')">
                         <span style="display:inline-flex; align-items:center; gap:4px;">${Icons.stopSquare} Stop</span>
                     </button>
-                    <button class="btn" style="padding:4px 10px; font-weight:bold; background:var(--sidebar-bg); color:var(--text-primary); border:1px solid var(--border-color);" onclick="UI.Alarm.snooze('${toastId}', '${encodedMsg}', 10)">
+                    <button class="btn" style="padding:4px 10px; font-weight:bold; background:var(--sidebar-bg); color:var(--text-primary); border:1px solid var(--border-color);" onclick="UI.Alarm.snooze('${toastId}', 10)">
                         <span style="display:inline-flex; align-items:center; gap:4px;">${Icons.snooze} +10 Min</span>
                     </button>
-                    <button class="btn" style="padding:4px 10px; font-weight:bold; background:var(--sidebar-bg); color:var(--text-primary); border:1px solid var(--border-color);" onclick="UI.Alarm.snooze('${toastId}', '${encodedMsg}', 30)">
+                    <button class="btn" style="padding:4px 10px; font-weight:bold; background:var(--sidebar-bg); color:var(--text-primary); border:1px solid var(--border-color);" onclick="UI.Alarm.snooze('${toastId}', 30)">
                         +30 Min
                     </button>
                 </div>
@@ -80,6 +76,7 @@ Object.assign(UI, {
         audioCtx: null,
         beepInterval: null,
         activeToasts: new Set(),
+        _alarmData: {},
 
         init: () => {
             const unlockAudio = () => {
@@ -102,12 +99,17 @@ Object.assign(UI, {
             document.addEventListener('keydown', unlockAudio);
         },
 
-        trigger: (message) => {
+        trigger: (message, meta = null) => {
             const msgToPush = message || 'Promemoria: Azione Richiesta!';
-            const toastId = UI.showToast(msgToPush, 'alarm');
+            const toastId = UI.showToast(msgToPush, 'alarm', true, meta);
             
             if (toastId) {
                 UI.Alarm.activeToasts.add(toastId);
+                UI.Alarm._alarmData[toastId] = {
+                    message: msgToPush,
+                    noteId: meta ? meta.noteId : null,
+                    bookmarkId: meta ? meta.bookmarkId : null
+                };
                 UI.Alarm.play();
             }
         },
@@ -164,15 +166,29 @@ Object.assign(UI, {
         },
 
         stop: (toastId) => {
+            delete UI.Alarm._alarmData[toastId];
             UI.Alarm._removeToastAndCheckAudio(toastId);
         },
 
-        snooze: (toastId, encodedMessage, delayMinutes = 5) => {
+        snooze: (toastId, minutes = 5) => {
+            const data = UI.Alarm._alarmData[toastId] || {};
+            delete UI.Alarm._alarmData[toastId];
             UI.Alarm._removeToastAndCheckAudio(toastId);
-            const decodedMsg = decodeURIComponent(encodedMessage);
+
+            const noteId = data.noteId;
+            const bookmarkId = data.bookmarkId;
+            const message = data.message || 'Promemoria: Azione Richiesta!';
+
+            // Se l'allarme proviene da un segnalibro fisico, posticipa direttamente sulla nota
+            if (noteId && typeof Editor !== 'undefined' && typeof Editor.snoozeBookmark === 'function') {
+                Editor.snoozeBookmark(noteId, bookmarkId, minutes);
+                return;
+            }
+
+            // Fallback per promemoria non vincolati a un segnalibro specifico
             setTimeout(() => {
-                UI.Alarm.trigger(decodedMsg);
-            }, delayMinutes * 60 * 1000); 
+                UI.Alarm.trigger(message);
+            }, minutes * 60 * 1000); 
         }
     }
 });

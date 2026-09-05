@@ -2,6 +2,7 @@
  * ui-notes-utils.js
  * Sottomodulo di UI.
  * Funzioni di supporto, formattazione, Breadcrumb e segnalibri della Nota (Utilities).
+ * Integrazione del badge Cestino nel breadcrumb per le note eliminate.
  */
 
 Object.assign(UI, {
@@ -56,20 +57,47 @@ Object.assign(UI, {
 
     openNoteOptionsMenu: (e, anchorId) => {
         if(e) e.stopPropagation();
-        const items = [
-            { icon: Icons.save, label: 'Salva come Template Locale', onClick: () => TemplateManager.saveCurrentNoteAsTemplate() },
-            { icon: Icons.tableSimple, label: 'Gestisci Template...', onClick: () => TemplateManager.openManager() },
-            { type: 'divider' },
-            { icon: Icons.download, label: 'Esporta come Modulo (Modpack)', onClick: () => PackageManager.exportNoteAsModpack(AppState.currentNoteId) },
-            { type: 'divider' },
-            { icon: Icons.trash, label: 'Sposta nel Cestino', danger: true, onClick: () => UI.deleteCurrentNote() }
-        ];
+        
+        const currentNote = Store.getNote(AppState.currentNoteId);
+        const isTrashed = currentNote && currentNote.deletedAt;
+
+        const items = [];
+
+        if (isTrashed) {
+            items.push({
+                icon: Icons.restore,
+                label: 'Ripristina Nota dal Cestino',
+                onClick: () => UI.restoreNoteFromBanner(AppState.currentNoteId)
+            });
+            items.push({ type: 'divider' });
+            items.push({
+                icon: Icons.trash,
+                label: 'Elimina Definitivamente',
+                danger: true,
+                onClick: () => {
+                    if (confirm("Eliminare DEFINITIVAMENTE questa nota e tutti i suoi dati? L'operazione non può essere annullata.")) {
+                        UI.Trash.hardDelete(AppState.currentNoteId, true);
+                        UI.goHome();
+                    }
+                }
+            });
+        } else {
+            items.push({ icon: Icons.save, label: 'Salva come Template Locale', onClick: () => TemplateManager.saveCurrentNoteAsTemplate() });
+            items.push({ icon: Icons.tableSimple, label: 'Gestisci Template...', onClick: () => TemplateManager.openManager() });
+            items.push({ type: 'divider' });
+            items.push({ icon: Icons.download, label: 'Esporta come Modulo (Modpack)', onClick: () => PackageManager.exportNoteAsModpack(AppState.currentNoteId) });
+            items.push({ type: 'divider' });
+            items.push({ icon: Icons.trash, label: 'Sposta nel Cestino', danger: true, onClick: () => UI.deleteCurrentNote() });
+        }
+
         UI.Menu.buildContextMenu(anchorId, items);
     },
 
     toggleMark: () => {
         if (!AppState.currentNoteId) return;
         const note = Store.getNote(AppState.currentNoteId);
+        if (!note || note.deletedAt) return; // Non consentire preferiti su note cestinate
+
         note.isMarked = !note.isMarked;
         
         UI.updateMarkBtn(note.isMarked);
@@ -91,38 +119,27 @@ Object.assign(UI, {
     updateBreadcrumb: (note) => {
         const bc = document.getElementById('breadcrumb');
         if (!bc) return;
-        let path = []; let curr = note;
-        while (curr) { path.unshift(curr); curr = Store.getNote(curr.parentId); }
-        bc.innerHTML = path.map((n, i) => {
+        
+        let path = []; 
+        let curr = note;
+        while (curr) { 
+            path.unshift(curr); 
+            curr = Store.getNote(curr.parentId); 
+        }
+
+        let breadcrumbHTML = '';
+
+        if (note && note.deletedAt) {
+            breadcrumbHTML += `<span style="background: rgba(239, 68, 68, 0.1); color: var(--danger-color); padding: 1px 6px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px;">${Icons.trash} Cestino</span><span style="opacity:0.5;"> / </span>`;
+        }
+
+        breadcrumbHTML += path.map((n, i) => {
             const isLast = i === path.length - 1;
             const safeTitle = n.title || 'Senza Titolo';
-            return `<span style="cursor:pointer; color:var(--text-secondary); ${isLast ? 'font-weight:bold; color:var(--text-primary);' : ''}" onclick="UI.selectNote('${n.id}')">${safeTitle}</span>`;
+            const colorStyle = n.deletedAt ? 'color: var(--danger-color);' : '';
+            return `<span style="cursor:pointer; color:var(--text-secondary); ${colorStyle} ${isLast ? 'font-weight:bold; color:var(--text-primary);' : ''}" onclick="UI.selectNote('${n.id}')">${safeTitle}</span>`;
         }).join('<span style="opacity:0.5;"> / </span>');
-    },
 
-    highlightTreeNode: (id) => {
-        document.querySelectorAll('.node-content').forEach(el => el.classList.remove('active'));
-        const el = document.querySelector(`.node-wrapper[data-id="${id}"] > .node-content`);
-        if (el) el.classList.add('active');
-    },
-
-    scrollToHeader: (anchorText) => {
-        const editor = document.getElementById('noteContent');
-        if (!editor) return;
-        const headers = editor.querySelectorAll('h2, h3');
-        for (let h of headers) {
-            if (h.innerText.trim() === anchorText) {
-                h.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                
-                h.style.transition = 'box-shadow 0.6s ease';
-                h.style.boxShadow = '0 0 0 4px var(--marked-border), 0 0 30px var(--marked-border)';
-                
-                setTimeout(() => {
-                    h.style.boxShadow = '';
-                    setTimeout(() => h.style.transition = '', 600);
-                }, 800);
-                break;
-            }
-        }
+        bc.innerHTML = breadcrumbHTML;
     }
 });

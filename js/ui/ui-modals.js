@@ -71,28 +71,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.body.insertAdjacentHTML('beforeend', modalsHTML);
 });
-
-const originalOpenDrawer = UI.openDrawer;
-UI.openDrawer = (titleHTML, bodyHTML, footerHTML) => {
-    originalOpenDrawer(titleHTML, bodyHTML, footerHTML);
-};
-
-const originalCloseDrawer = UI.closeDrawer;
-UI.closeDrawer = () => {
-    originalCloseDrawer();
-    
-    // Gestione chiusura record database
-    if (typeof AdvancedTable !== 'undefined' && AdvancedTable.activeRecordId) {
-        const targetRowId = AdvancedTable.activeRecordId;
-        AdvancedTable.activeRecordId = null;
-
-        if (AppState.databases) {
-            Object.keys(AppState.databases).forEach(tId => {
-                const state = AppState.databases[tId];
-                if (state && state.rows && state.rows.some(r => r.id === targetRowId)) {
-                    AdvancedTable.renderTable(tId);
-                }
-            });
-        }
-    }
-};
