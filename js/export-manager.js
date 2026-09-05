@@ -1,9 +1,9 @@
 /**
  * ExportManager.js
  * Crea il documento di esportazione (HTML o Markdown) e gestisce l'importazione.
- * REFACTOR WORKSPACE: I documenti generati puntano ora in relativo alla cartella assets/
- * per supportare i file locali.
- * FIX ESPORTAZIONE: Centralizzata la decodifica di Note ID e Relazioni tramite getFormatDisplayValue.
+ * Supporto ai percorsi relativi "assets/" per i file multimediali locali.
+ * Parser completo per la re-importazione di tabelle Markdown in componenti nativi.
+ * Supporto alla conservazione del valore di partenza (start) negli elenchi numerati.
  */
 
 const ExportManager = {
@@ -253,7 +253,6 @@ const ExportManager = {
 
             // 3. Conversione Widget Complessi in HTML Statico
             if (typeof WidgetManager !== 'undefined') {
-                // FIX NESTING: Elaborazione invertita (Bottom-Up) per proteggere i widget figli (es. DB dentro Citazione)
                 const widgets = Array.from(tempDiv.querySelectorAll(WidgetManager.blockSelector)).reverse();
                 
                 widgets.forEach(wrapper => {
@@ -294,7 +293,6 @@ const ExportManager = {
                                 return;
                             }
                             
-                            // RISPETTO DEI FILTRI E SORTING
                             let viewRows = [];
                             const renderCache = {};
                             state.rows.forEach(r => viewRows.push(AdvancedTable.buildVirtualRow(trueId, r, state, renderCache)));
@@ -312,7 +310,6 @@ const ExportManager = {
                             tableHTML += '</tr></thead><tbody>';
 
                             viewRows.forEach(r => {
-                                // Determina se c'è un colore condizionale applicato alla riga
                                 let rowColorClass = '';
                                 if (state.conditionalColors && state.conditionalColors.length > 0) {
                                     for (const rule of state.conditionalColors) {
@@ -348,7 +345,6 @@ const ExportManager = {
                                         let val = r.virtualCells[c.id];
                                         let displayVal = '';
 
-                                        // Manteniamo le pillole colorate per il multi-select
                                         if (['select', 'multi-select'].includes(c.type)) {
                                             const vals = Array.isArray(val) ? val : (val ? [val] : []);
                                             vals.forEach(v => {
@@ -356,7 +352,6 @@ const ExportManager = {
                                                 displayVal += `<span class="adv-select-pill ${colorClass}">${v}</span> `;
                                             });
                                         } else {
-                                            // Usiamo la funzione centralizzata Human-Readable per tutti gli altri campi (incluse Relazioni e Pagine)
                                             displayVal = AdvancedTable.getFormatDisplayValue(c, val);
                                         }
 
@@ -527,7 +522,6 @@ const ExportManager = {
         });
 
         if (typeof WidgetManager !== 'undefined') {
-            // FIX NESTING: Array .reverse() per processare i widget figli prima dei padri (Bottom-Up)
             const widgets = Array.from(temp.querySelectorAll(WidgetManager.blockSelector)).reverse();
             
             widgets.forEach(wrapper => {
@@ -566,7 +560,6 @@ const ExportManager = {
                             return;
                         }
                         
-                        // FIX FILTRI E SORTING IN MD
                         let viewRows = [];
                         const renderCache = {};
                         state.rows.forEach(r => viewRows.push(AdvancedTable.buildVirtualRow(trueId, r, state, renderCache)));
@@ -582,7 +575,6 @@ const ExportManager = {
                         viewRows.forEach(r => {
                             const rowData = visibleCols.map(c => {
                                 let val = r.virtualCells[c.id];
-                                // USIAMO LA FUNZIONE CENTRALIZZATA PER MD
                                 let displayVal = AdvancedTable.getFormatDisplayValue(c, val);
                                 return String(displayVal || '').replace(/\|/g, '\\|').replace(/\n/g, '<br>');
                             });
@@ -618,7 +610,6 @@ const ExportManager = {
                         wrapper.outerHTML = `\n**&lt;/&gt; ${title}**\n\`\`\`${lang === 'none' ? '' : lang}\n${codeText}\n\`\`\`\n\n`;
                     } catch(e) { wrapper.outerHTML = "\n*[Codice rimosso]*\n"; }
                 } else if (type === 'citation') {
-                    // Costrutto <blockquote> generico per essere compatibile con i parser successivi
                     const body = wrapper.querySelector('.citation-body');
                     const titleNode = wrapper.querySelector('.adv-table-title');
                     const citTitle = titleNode ? titleNode.innerText : 'Citazione';
@@ -681,7 +672,6 @@ const ExportManager = {
         
         htmlStr = htmlStr.replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
 
-        // WORKSPACE: Sostituzione link immagini compatibili per Markdown (in locale cartella assets/)
         if (includeImages) {
             htmlStr = htmlStr.replace(/<img[^>]*data-image-ref=["']([^"']+)["'][^>]*>/gi, '![Immagine](assets/$1)');
             htmlStr = htmlStr.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
@@ -702,7 +692,12 @@ const ExportManager = {
         let olCounter = 0;
         let inOl = false;
         htmlStr = htmlStr.split('\n').map(line => {
-            if (line.includes('<ol')) { inOl = true; olCounter = 1; return line.replace(/<ol[^>]*>/i, ''); }
+            if (line.includes('<ol')) { 
+                inOl = true; 
+                const matchStart = line.match(/start=["'](\d+)["']/i);
+                olCounter = matchStart ? parseInt(matchStart[1], 10) : 1; 
+                return line.replace(/<ol[^>]*>/i, ''); 
+            }
             if (line.includes('</ol>')) { inOl = false; return line.replace(/<\/ol>/i, '\n'); }
             if (inOl && line.startsWith('- ')) {
                 const updatedLine = line.replace(/^- /, `${olCounter}. `);
@@ -711,6 +706,7 @@ const ExportManager = {
             }
             return line;
         }).join('\n');
+        if (inOl) html += '</ul>';
 
         htmlStr = htmlStr.replace(/<\/?ul[^>]*>/gi, '\n');
         htmlStr = htmlStr.replace(/<\/?(p|div)[^>]*>/gi, '\n');
@@ -784,16 +780,29 @@ const ExportManager = {
         Store.triggerAutoSave();
     },
 
+    // Parser di supporto per convertire una singola cella Markdown preservando formattazioni e line break
+    _parseMarkdownCellText: (cellText) => {
+        if (!cellText || cellText.trim() === '') return '<br>';
+        let t = cellText.trim();
+        t = t.replace(/<br\s*\/?>/gi, '<br>');
+        t = t.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        t = t.replace(/\*(.*?)\*/g, '<i>$1</i>');
+        t = t.replace(/~~(.*?)~~/g, '<s>$1</s>');
+        t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+        t = t.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
+        return t || '<br>';
+    },
+
     parseMarkdownToHTML: (md) => {
         let html = md.replace(/\r\n/g, '\n');
 
+        // 1. TOKENIZZAZIONE DEI BLOCCHI DI CODICE (Fenced Code Blocks)
         const codeBlocks = [];
         html = html.replace(/```([\w-]*)\n([\s\S]*?)```/gm, (match, lang, code) => {
             const blockId = 'adv_code_' + Store.generateId();
             const cleanLang = lang || 'none';
             const cleanCode = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
             
-            // Re-idratazione corretta all'importazione
             if (!AppState.databases) AppState.databases = {};
             AppState.databases[blockId] = { title: 'Codice Importato', language: cleanLang, content: code };
 
@@ -803,6 +812,82 @@ const ExportManager = {
             return `%%%CODE_BLOCK_${codeBlocks.length - 1}%%%`;
         });
 
+        // 2. TOKENIZZAZIONE DELLE TABELLE MARKDOWN (Pipe Tables)
+        const tableBlocks = [];
+        const lines = html.split('\n');
+        const outputLines = [];
+        let inTable = false;
+        let tableBuffer = [];
+
+        const isTableLine = (l) => {
+            const trimmed = l.trim();
+            return trimmed.includes('|') && (trimmed.startsWith('|') || trimmed.endsWith('|') || trimmed.split('|').length >= 3);
+        };
+
+        const isDelimiterLine = (l) => {
+            const trimmed = l.trim().replace(/^\|/, '').replace(/\|$/, '');
+            const parts = trimmed.split('|').map(p => p.trim());
+            return parts.length > 0 && parts.every(p => /^:?-+:?$/.test(p));
+        };
+
+        const flushTableBuffer = () => {
+            if (tableBuffer.length >= 2 && isDelimiterLine(tableBuffer[1])) {
+                const headerLine = tableBuffer[0].trim().replace(/^\|/, '').replace(/\|$/, '');
+                const headers = headerLine.split('|').map(h => h.trim());
+                
+                const dataLines = tableBuffer.slice(2);
+                const stblId = 'stbl_' + Store.generateId();
+                
+                let tblHTML = `<div class="adv-widget-shell simple-table-wrapper" data-widget-type="simple-table" id="${stblId}" contenteditable="false">`;
+                tblHTML += `<table class="table-striped" style="width:100%; table-layout:auto;"><tbody>`;
+                
+                // Intestazione
+                tblHTML += `<tr>`;
+                headers.forEach(h => {
+                    tblHTML += `<th contenteditable="true">${ExportManager._parseMarkdownCellText(h)}</th>`;
+                });
+                tblHTML += `</tr>`;
+                
+                // Righe di dati
+                dataLines.forEach(dLine => {
+                    const cleanDLine = dLine.trim().replace(/^\|/, '').replace(/\|$/, '');
+                    const cells = cleanDLine.split('|');
+                    
+                    tblHTML += `<tr>`;
+                    for (let c = 0; c < headers.length; c++) {
+                        const cellContent = cells[c] !== undefined ? cells[c] : '';
+                        tblHTML += `<td contenteditable="true">${ExportManager._parseMarkdownCellText(cellContent)}</td>`;
+                    }
+                    tblHTML += `</tr>`;
+                });
+                
+                tblHTML += `</tbody></table></div>`;
+                
+                tableBlocks.push(tblHTML);
+                outputLines.push(`%%%TABLE_BLOCK_${tableBlocks.length - 1}%%%`);
+            } else {
+                // Se non era una tabella valida con divisore conforme, rilascia le righe inalterate
+                tableBuffer.forEach(tblLine => outputLines.push(tblLine));
+            }
+            tableBuffer = [];
+            inTable = false;
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (isTableLine(line)) {
+                inTable = true;
+                tableBuffer.push(line);
+            } else {
+                if (inTable) flushTableBuffer();
+                outputLines.push(line);
+            }
+        }
+        if (inTable) flushTableBuffer();
+
+        html = outputLines.join('\n');
+
+        // 3. PARSING DELLE ALTRE STRUTTURE MARKDOWN
         html = html.replace(/^>\s*(.*?)(?=\n|$)/gm, '<blockquote>$1</blockquote>');
 
         html = html.replace(/^###### (.*?)$/gm, '<h6>$1</h6>');
@@ -835,10 +920,17 @@ const ExportManager = {
         }).join('\n');
         if (inUl) html += '</ul>';
 
+        // Gestione avanzata importazione elenchi numerati con conservazione del valore di partenza
         let inOl = false;
         html = html.split('\n').map(line => {
-            if (line.match(/^\d+\.\s+/)) {
-                if (!inOl) { inOl = true; return '<ol><li>' + line.replace(/^\d+\.\s+/, '') + '</li>'; }
+            const olMatch = line.match(/^(\d+)\.\s+/);
+            if (olMatch) {
+                const num = parseInt(olMatch[1], 10);
+                if (!inOl) { 
+                    inOl = true; 
+                    const startAttr = num !== 1 ? ` start="${num}"` : '';
+                    return `<ol${startAttr}><li>` + line.replace(/^\d+\.\s+/, '') + '</li>'; 
+                }
                 return '<li>' + line.replace(/^\d+\.\s+/, '') + '</li>';
             } else if (inOl) {
                 inOl = false; return '</ol>\n' + line;
@@ -854,14 +946,19 @@ const ExportManager = {
         html = blocks.map(block => {
             const t = block.trim();
             if (!t) return '';
-            if (t.startsWith('%%%CODE_BLOCK_') || t.startsWith('<h') || t.startsWith('<ul') || t.startsWith('<ol') || t.startsWith('<blockquote') || t.startsWith('<hr')) {
+            if (t.startsWith('%%%CODE_BLOCK_') || t.startsWith('%%%TABLE_BLOCK_') || t.startsWith('<h') || t.startsWith('<ul') || t.startsWith('<ol') || t.startsWith('<blockquote') || t.startsWith('<hr')) {
                 return t;
             }
             return `<p>${t.replace(/\n/g, '<br>')}</p>`;
         }).join('');
 
+        // 4. RE-INIEZIONE DEI BLOCCHI CODICE E TABELLE
         html = html.replace(/%%%CODE_BLOCK_(\d+)%%%/g, (match, idx) => {
             return codeBlocks[parseInt(idx)];
+        });
+
+        html = html.replace(/%%%TABLE_BLOCK_(\d+)%%%/g, (match, idx) => {
+            return tableBlocks[parseInt(idx)];
         });
 
         return html;

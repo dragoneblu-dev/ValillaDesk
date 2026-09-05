@@ -8,36 +8,6 @@
 Object.assign(Editor, {
 
     /**
-     * ESTRATTORE GEOMETRICO ASSOLUTO 
-     * Sostituisce la versione debole che si fermava ai bordi degli Span ignorando gli offset interni.
-     * Genera un clone temporaneo del DOM per contare matematicamente i caratteri fisici e i <br> fino al cursore.
-     */
-    _getCodeOffset: (preNode, targetContainer, targetOffset) => {
-        try {
-            // Seleziona tutto dall'inizio del blocco PRE fino al cursore esatto
-            const range = document.createRange();
-            range.setStart(preNode, 0);
-            range.setEnd(targetContainer, targetOffset);
-            
-            // Estrae una copia del DOM contenente solo la parte prima del cursore
-            const frag = range.cloneContents();
-            let pos = 0;
-            
-            // Conta in modo matematico tutti i caratteri di testo e le andate a capo (<br>) presenti
-            const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
-            let node;
-            while ((node = walker.nextNode())) {
-                if (node.nodeType === 3) pos += node.nodeValue.length;
-                else if (node.nodeName === 'BR') pos += 1;
-            }
-            return pos;
-        } catch (e) {
-            //console.error("🔴 [CARET-DEBUG] Errore critico nel calcolo offset cursore:", e);
-            return 0;
-        }
-    },
-
-    /**
      * SNIPPET VERTICAL ESCAPE (Raycast Engine)
      * Previene il bug del browser nativo che fa rimbalzare il cursore in un loop infinito 
      * dentro/fuori lo snippet copiabile quando si preme ArrowUp o ArrowDown.
@@ -642,37 +612,5 @@ Object.assign(Editor, {
                 }
             }
         }
-    },
-
-    indentChecklistLine: (liNode) => {
-        const prevLi = liNode.previousElementSibling;
-        if (!prevLi) return; 
-        let nestedUl = prevLi.querySelector('ul.adv-checklist');
-        if (!nestedUl) {
-            nestedUl = document.createElement('ul');
-            nestedUl.className = 'adv-checklist';
-            nestedUl.style.listStyle = 'none'; nestedUl.style.paddingLeft = '20px'; nestedUl.style.margin = '5px 0'; nestedUl.style.width = '100%';
-            prevLi.style.flexWrap = 'wrap'; prevLi.appendChild(nestedUl);
-        }
-        nestedUl.appendChild(liNode);
-    },
-
-    outdentChecklistLine: (liNode) => {
-        const parentUl = liNode.parentNode;
-        if (!parentUl || !parentUl.classList.contains('adv-checklist')) return;
-        const grandParentLi = parentUl.closest('li');
-        if (!grandParentLi) return; 
-        grandParentLi.parentNode.insertBefore(liNode, grandParentLi.nextSibling);
-        if (parentUl.children.length === 0) parentUl.remove();
-    },
-
-    outdentStandardListItem: (liNode) => {
-        // FIX SHIFT-TAB: Nessun parsing distruttivo. Delegato interamente al browser.
-        const sel = window.getSelection();
-        const rng = document.createRange();
-        rng.selectNodeContents(liNode);
-        sel.removeAllRanges();
-        sel.addRange(rng);
-        document.execCommand('outdent', false, null);
     }
 });

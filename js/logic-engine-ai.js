@@ -1,6 +1,7 @@
 /**
  * logic-engine-ai.js
  * Generatore dei Prompt e Assistente Intelligenza Artificiale per l'Engine JS.
+ * Supporto per copia sicura (Clipboard API + Fallback textarea) e gestione robusta dell'ID database.
  */
 
 Object.assign(LogicEngine, {
@@ -80,19 +81,25 @@ LA MIA RICHIESTA:
     copyAutomationAIPrompt: (e, tableId, btnId) => {
         if (e) e.preventDefault();
         
-        if (!tableId) {
-            alert("Devi prima selezionare un database per generare il prompt.");
+        if (!tableId || tableId === 'undefined' || tableId === 'null') {
+            alert("Seleziona prima il Database Bersaglio per permettere all'IA di leggerne le colonne.");
             return;
         }
 
-        const state = AdvancedTable.getState(tableId);
-        if (!state) return;
+        const state = (typeof AdvancedTable !== 'undefined') 
+            ? (AdvancedTable.getTableState(tableId) || AdvancedTable.getState(tableId)) 
+            : null;
+
+        if (!state) {
+            alert("Impossibile trovare la struttura del Database selezionato.");
+            return;
+        }
 
         let colsInfo = [];
         (state.columns || []).forEach(c => {
             let info = `- "${c.name}" (Tipo: ${c.type})`;
             if (c.type === 'relation' && c.targetTableId) {
-                const tState = AdvancedTable.getTableState(c.targetTableId);
+                const tState = typeof AdvancedTable !== 'undefined' ? AdvancedTable.getTableState(c.targetTableId) : null;
                 if (tState && tState.columns) {
                     info += ` -> Collegato al Database "${tState.title}". Colonne di quel DB: ${tState.columns.map(tc => `"${tc.name}"`).join(', ')}`;
                 }
@@ -100,7 +107,7 @@ LA MIA RICHIESTA:
             colsInfo.push(info);
         });
 
-        const isColButton = btnId.includes('colbtn');
+        const isColButton = btnId && btnId.includes('colbtn');
 
         const prompt = `Agisci come un programmatore Javascript esperto e aiutami a scrivere una formula per un'Automazione/Pulsante.
 
@@ -157,20 +164,49 @@ ${colsInfo.join('\n')}
 LA MIA RICHIESTA:
 [Scrivi qui cosa deve calcolare la formula]`;
 
-        navigator.clipboard.writeText(prompt).then(() => {
+        const performCopy = (text) => {
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(text);
+            } else {
+                return new Promise((resolve, reject) => {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    ta.style.top = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    try {
+                        const success = document.execCommand('copy');
+                        ta.remove();
+                        if (success) resolve();
+                        else reject(new Error('execCommand copy fallito'));
+                    } catch (err) {
+                        ta.remove();
+                        reject(err);
+                    }
+                });
+            }
+        };
+
+        performCopy(prompt).then(() => {
             const btn = document.getElementById(btnId);
             if (btn) {
                 const originalHTML = btn.innerHTML;
-                btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${Icons.checkCircle} Copiato!</span>`;
+                btn.innerHTML = `<span style="display:inline-flex; align-items:center; gap:5px;">${typeof Icons !== 'undefined' ? Icons.checkCircle : '✓'} Copiato!</span>`;
                 btn.classList.add('btn-primary');
                 setTimeout(() => {
                     btn.innerHTML = originalHTML;
                     btn.classList.remove('btn-primary');
                 }, 2000);
             }
+            if (typeof UI !== 'undefined' && UI.showToast) {
+                UI.showToast("Prompt AI copiato negli appunti!", "success");
+            }
         }).catch(err => {
-            console.error("Errore copia prompt: ", err);
-            alert("Impossibile copiare negli appunti.");
+            console.error("Errore copia prompt:", err);
+            window.prompt("Copia manualmente il prompt con Ctrl+C:", prompt);
         });
     }
 });

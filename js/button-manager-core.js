@@ -225,7 +225,6 @@ const ButtonManager = {
     },
 
     handleDragStart: (e, id) => {
-        //console.log(`[MACRO-DRAG] 1. handleDragStart innescato per la barra: ${id}`);
         e.dataTransfer.effectAllowed = 'move';
         AppState.draggedBlockId = id;
         AppState.draggedBlockType = 'buttonbar';
@@ -388,113 +387,5 @@ const ButtonManager = {
                 UI.showToast(`Nessun record ha soddisfatto le condizioni. Operazione ignorata.`, "warning");
             }
         }
-    },
-
-    _triggerRefresh: () => {
-        ButtonManager._captureOpenStates();
-        const labelEl = document.getElementById('btnConfigLabel');
-        if (labelEl && ButtonManager._draftBtnState) {
-             ButtonManager._draftBtnState.label = labelEl.value.trim();
-        }
-        const barId = ButtonManager._draftBarId;
-        const btnState = ButtonManager._draftBtnState;
-        if (!barId || !btnState) return;
-        
-        ButtonManager.refreshConfigOptions(barId, btnState.id);
-    },
-
-    _saveConfigFromDOM: (barId, btnId, silent = false) => {
-        ButtonManager._captureOpenStates();
-
-        let btnState = ButtonManager._draftBtnState;
-        if (!btnState) return null;
-        
-        const labelEl = document.getElementById('btnConfigLabel');
-        if (labelEl) btnState.label = labelEl.value.trim();
-
-        btnState.actionBlocks = [];
-        
-        document.querySelectorAll('.action-block-card').forEach(card => {
-            const blockId = card.dataset.blockId;
-            const targetDbEl = card.querySelector('.act-target-db');
-            const actionTypeEl = card.querySelector('.act-type-select');
-            const sourceDbEl = card.querySelector('.act-source-db');
-            
-            const targetDbId = targetDbEl ? targetDbEl.value : null;
-            const actionType = actionTypeEl ? actionTypeEl.value : 'update';
-            const sourceDbId = sourceDbEl ? sourceDbEl.value : null;
-            
-            const filters = [];
-            if (actionType === 'update' || actionType === 'insert_select' || actionType === 'email') {
-                card.querySelectorAll('.btn-filter-field-row').forEach(row => {
-                    const colEl = row.querySelector('.act-filter-col');
-                    const opEl = row.querySelector('.act-filter-op');
-                    const valEl = row.querySelector('.act-filter-val');
-                    if (colEl && opEl) {
-                        filters.push({ colId: colEl.value, operator: opEl.value, value: valEl ? valEl.value : '' });
-                    }
-                });
-            }
-
-            const actions = [];
-            card.querySelectorAll('.btn-action-field-row').forEach(row => {
-                const colEl = row.querySelector('.action-col');
-                const typeEl = row.querySelector('.action-type');
-                const valEl = row.querySelector('.action-val');
-                const val2El = row.querySelector('.action-val2');
-                
-                if (typeEl) {
-                    const colId = colEl ? colEl.value : null;
-                    const type = typeEl.value;
-                    const val = valEl ? valEl.value : '';
-                    const val2 = val2El ? val2El.value : '';
-                    
-                    const pseudoColId = row.querySelector('span') && row.querySelector('span').innerText.includes('A (Email)') ? 'EMAIL_TO' : 
-                                        (row.querySelector('span') && row.querySelector('span').innerText.includes('CC') ? 'EMAIL_CC' : 
-                                        (row.querySelector('span') && row.querySelector('span').innerText.includes('Oggetto') ? 'EMAIL_SUBJECT' : 
-                                        (row.querySelector('span') && row.querySelector('span').innerText.includes('Corpo') ? 'EMAIL_BODY' : colId)));
-                    
-                    if (pseudoColId) {
-                        actions.push({ colId: pseudoColId, type: type, value: val, value2: val2 });
-                    }
-                }
-            });
-
-            btnState.actionBlocks.push({
-                id: blockId,
-                targetDbId,
-                sourceDbId,
-                actionType,
-                filters,
-                actions
-            });
-        });
-
-        return btnState;
-    },
-
-    saveConfig: (barId, btnId) => {
-        const draft = ButtonManager._saveConfigFromDOM(barId, btnId, true);
-        if (!draft) return;
-        
-        for (let blk of draft.actionBlocks) {
-            if (blk.targetDbId && (!blk.actions || blk.actions.length === 0) && blk.actionType !== 'email') {
-                alert("Devi configurare almeno una colonna di destinazione (Azione SET) per tutti i database scelti.");
-                return;
-            }
-        }
-        
-        let realState = ButtonManager.getState(barId);
-        const idx = realState.buttons.findIndex(b => b.id === btnId);
-        if (idx !== -1) {
-            realState.buttons[idx] = JSON.parse(JSON.stringify(draft));
-            ButtonManager.setState(barId, realState); 
-        }
-
-        ButtonManager.render(barId);
-        UI.closeDrawer();
-        
-        ButtonManager._draftBtnState = null;
-        ButtonManager._draftBarId = null;
     }
 };

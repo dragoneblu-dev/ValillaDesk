@@ -1,8 +1,7 @@
 /**
  * logic-engine-ui.js
  * Generatori di Markup HTML e UI per la costruzione visiva delle regole Logiche (Dropdown, Input e Preview).
- * FIX TEMA: Aggiornati i colori di sfondo e testo (var(--code-bg), var(--code-text)) per conformare 
- * gli input delle formule al tema corrente.
+ * Supporto dinamico per offset giorni (+/- giorni) e minuti (+/- minuti) su azioni Oggi e Adesso.
  */
 
 Object.assign(LogicEngine, {
@@ -197,11 +196,20 @@ Object.assign(LogicEngine, {
 
         const safeVal1 = UI.escapeHTML(val1 || '');
 
+        // Gestione Azioni OGGI con offset giorni (+/- giorni)
+        if (['set_today', 'set_start_today', 'set_end_today'].includes(actType) && ['date', 'datetime'].includes(colDef.type)) {
+            return `<input type="number" class="modern-input action-val" style="width:100%; box-sizing:border-box; margin:0; text-align:right;" placeholder="+ numero giorni" title="Numero di giorni da aggiungere (+) o sottrarre (-) rispetto ad oggi" value="${safeVal1}" oninput="${onchangeCallback}('value', this.value)">`;
+        }
+
+        // Gestione Azioni ADESSO con offset minuti (+/- minuti)
+        if (['set_datetime', 'set_start_now', 'set_end_now'].includes(actType) && ['date', 'datetime'].includes(colDef.type)) {
+            return `<input type="number" class="modern-input action-val" style="width:100%; box-sizing:border-box; margin:0; text-align:right;" placeholder="+ numero minuti" title="Numero di minuti da aggiungere (+) o sottrarre (-) rispetto ad adesso" value="${safeVal1}" oninput="${onchangeCallback}('value', this.value)">`;
+        }
+
         if (actType && actType.includes('formula')) {
             let ph = "Es: riga['Nome'].toUpperCase()";
             const inputIdAttr = (extraData && extraData.inputId) ? `id="${extraData.inputId}"` : '';
             
-            // FIX TEMA: background e color ereditati per il codice
             if (extraData && extraData.isEmailBody) {
                 return `<textarea ${inputIdAttr} class="modern-input action-val live-formula-input" style="width:100%; box-sizing:border-box; margin:0; font-family:monospace; background:var(--code-bg); color:var(--code-text); border:1px solid var(--border-color); border-radius:4px; padding:8px; min-height:80px; resize:vertical;" placeholder="'Gentile ' + riga['Nome Cliente'] + ',\\nQuesta è una mail multi-riga!\\n\\n' + riga['Dettagli']" oninput="${onchangeCallback}('value', this.value)">${safeVal1}</textarea>`;
             }

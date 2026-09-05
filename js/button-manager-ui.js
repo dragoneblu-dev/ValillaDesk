@@ -1,13 +1,14 @@
 /**
  * button-manager-ui.js
  * Interfaccia di configurazione dei Pulsanti Programmabili.
- * FIX: Il blocco Azioni non perde più la ram quando i pulsanti "+" aggiungono righe.
+ * Sincronizzazione atomica degli ID database per la generazione dei Prompt AI.
  */
 
 Object.assign(ButtonManager, {
 
     _draftBtnState: null,
     _draftBarId: null,
+    _isRefreshing: false,
 
     openConfig: (e, barId, btnId) => {
         if (e) e.stopPropagation();
@@ -112,7 +113,7 @@ Object.assign(ButtonManager, {
                 
                 <div style="padding: 0 15px 15px 15px; display:flex; flex-direction:column; gap:10px; border-top: 1px solid var(--border-color); margin-top: 10px; padding-top: 15px;">
                     <label style="font-size:0.8rem; font-weight:bold; color:var(--text-primary);">Etichetta Pulsante:</label>
-                    <input type="text" id="btnConfigLabel" class="modern-input" style="width:100%;" value="${(btnState.label || '').replace(/"/g, '&quot;')}" placeholder="Testo visibile... (Es: Completa Ordine o =Formula)" onblur="ButtonManager._triggerRefresh()">
+                    <input type="text" id="btnConfigLabel" class="modern-input" style="width:100%;" value="${(btnState.label || '').replace(/"/g, '&quot;')}" placeholder="Testo visibile... (Es: Completa Ordine o =Formula)" oninput="if (ButtonManager._draftBtnState) ButtonManager._draftBtnState.label = this.value;">
                     
                     <label style="font-size:0.8rem; font-weight:bold; color:var(--text-primary); margin-top:5px;">Colore Pulsante:</label>
                     ${colorSwatchesHtml}
@@ -146,7 +147,10 @@ Object.assign(ButtonManager, {
             btnState.actionBlocks.forEach((blk, index) => {
                 const isThisRow = false; 
                 const targetState = blk.targetDbId ? AdvancedTable.getTableState(blk.targetDbId) : null;
+                if (targetState) targetState.id = blk.targetDbId;
+
                 const sourceState = blk.sourceDbId ? AdvancedTable.getTableState(blk.sourceDbId) : null;
+                if (sourceState) sourceState.id = blk.sourceDbId;
                 
                 html += AutomationUIBuilder.buildActionBlockCard(blk, index, dbList, isThisRow, targetState, sourceState, formulaPreviews, callbacks, false);
             });
@@ -327,16 +331,22 @@ Object.assign(ButtonManager, {
     },
 
     _triggerRefresh: () => {
-        ButtonManager._captureOpenStates();
-        const labelEl = document.getElementById('btnConfigLabel');
-        if (labelEl && ButtonManager._draftBtnState) {
-             ButtonManager._draftBtnState.label = labelEl.value.trim();
+        if (ButtonManager._isRefreshing) return;
+        ButtonManager._isRefreshing = true;
+        try {
+            ButtonManager._captureOpenStates();
+            const labelEl = document.getElementById('btnConfigLabel');
+            if (labelEl && ButtonManager._draftBtnState) {
+                 ButtonManager._draftBtnState.label = labelEl.value.trim();
+            }
+            const barId = ButtonManager._draftBarId;
+            const btnState = ButtonManager._draftBtnState;
+            if (!barId || !btnState) return;
+            
+            ButtonManager.refreshConfigOptions(barId, btnState.id);
+        } finally {
+            ButtonManager._isRefreshing = false;
         }
-        const barId = ButtonManager._draftBarId;
-        const btnState = ButtonManager._draftBtnState;
-        if (!barId || !btnState) return;
-        
-        ButtonManager.refreshConfigOptions(barId, btnState.id);
     },
 
     _saveConfigFromDOM: (barId, btnId, silent = false) => {

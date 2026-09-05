@@ -1,12 +1,12 @@
 /**
  * EditorCore.js
  * Inizializzazione editor e core engine (Caret, Boundaries e Sanificazione JSON).
- * FIX GARBAGE COLLECTOR: Ora scansiona rigorosamente anche i Template.
- * FIX HYDRATION: Re-idratazione immediata post-salvataggio.
- * FIX ZWS POLLUTION: Estirpazione degli Zero-Width Space (\u200B) orfani dal DOM.
- * FIX DRAG & DROP: Inseriti .adv-board-card e gli eventi calendario nella Whitelist di handleSmartClickEscape
- * FIX APPUNTI CORROTTI: minifyHTMLForStorage ora appiattisce retroattivamente i vecchi appunti inline 
- * salvati erroneamente nel JSON con dei <div>, curando il file all'istante.
+ * Scansione transitiva nel Garbage Collector per tutelare database relazionali, template e asset.
+ * Re-idratazione immediata post-salvataggio.
+ * Estirpazione degli Zero-Width Space (\u200B) orfani dal DOM.
+ * Inseriti .adv-board-card e gli eventi calendario nella Whitelist di handleSmartClickEscape.
+ * Normalizzazione retroattiva degli appunti inline salvati con tag a blocco.
+ * FIX CARET: Integrato l'estrattore geometrico assoluto basato su Range.cloneContents per il calcolo infallibile degli offset.
  */
 
 const Editor = {
@@ -93,7 +93,7 @@ const Editor = {
     handleSmartClickEscape: (e) => {
         if (!AppState.isEditMode) return;
         
-        // FIX FOCUS: Non impedire MAI il click nativo su campi di input o textarea
+        // Non impedire il click nativo su campi di input o textarea
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
         const shell = e.target.closest('.adv-widget-shell, .adv-inline-shell');
@@ -205,41 +205,34 @@ const Editor = {
     },
 
     _getCodeOffset: (preNode, targetContainer, targetOffset) => {
-        let pos = 0;
-        
-        if (targetContainer === preNode) {
-            for (let i = 0; i < targetOffset; i++) {
-                const child = preNode.childNodes[i];
-                if (child.nodeName === 'BR') pos += 1;
-                else if (child.nodeType === 3) pos += child.nodeValue.length;
-                else pos += child.textContent.length;
+        try {
+            // Seleziona tutto dall'inizio del blocco PRE fino al cursore esatto
+            const range = document.createRange();
+            range.setStart(preNode, 0);
+            range.setEnd(targetContainer, targetOffset);
+            
+            // Estrae una copia del DOM contenente solo la parte prima del cursore
+            const frag = range.cloneContents();
+            let pos = 0;
+            
+            // Conta in modo matematico tutti i caratteri e le andate a capo presenti
+            const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
+            let node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeType === 3) pos += node.nodeValue.length;
+                else if (node.nodeName === 'BR') pos += 1;
             }
             return pos;
+        } catch (e) {
+            return 0;
         }
-
-        const walker = document.createTreeWalker(preNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
-        while (walker.nextNode()) {
-            const node = walker.currentNode;
-            if (node === targetContainer) {
-                if (node.nodeType === 3) {
-                    pos += targetOffset;
-                }
-                return pos;
-            }
-            if (node.nodeType === 3) {
-                pos += node.nodeValue.length;
-            } else if (node.nodeName === 'BR') {
-                pos += 1;
-            }
-        }
-        return pos;
     },
 
     _setCodeOffset: (preNode, startOffset, endOffset) => {
         let startNode = null, endNode = null;
         let startChar = 0, endChar = 0, currentPos = 0;
-        let lastTextNode = null;
-        
+        let lastNode = null;
+
         const walker = document.createTreeWalker(preNode, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
         let node;
 
@@ -247,34 +240,35 @@ const Editor = {
             if (node.nodeType !== 3 && node.nodeName !== 'BR') continue;
 
             let nodeLen = node.nodeType === 3 ? node.nodeValue.length : 1;
-            if (node.nodeType === 3) lastTextNode = node;
 
             if (!startNode && currentPos + nodeLen >= startOffset) {
                 startNode = node;
                 startChar = startOffset - currentPos;
             }
-            
             if (!endNode && currentPos + nodeLen >= endOffset) {
                 endNode = node;
                 endChar = endOffset - currentPos;
             }
 
+            lastNode = node;
             currentPos += nodeLen;
 
             if (startNode && endNode) break;
         }
 
-        if (!startNode && lastTextNode) { 
-            startNode = lastTextNode; 
-            startChar = lastTextNode.nodeValue.length; 
+        if (!startNode && lastNode) { 
+            startNode = lastNode; 
+            startChar = lastNode.nodeType === 3 ? lastNode.nodeValue.length : 1; 
         }
-        if (!endNode && lastTextNode) { 
-            endNode = lastTextNode; 
-            endChar = lastTextNode.nodeValue.length; 
+        if (!endNode && lastNode) { 
+            endNode = lastNode; 
+            endChar = lastNode.nodeType === 3 ? lastNode.nodeValue.length : 1; 
         }
-        
-        if (!startNode) { startNode = preNode; startChar = 0; }
-        if (!endNode) { endNode = preNode; endChar = 0; }
+
+        if (!startNode) {
+            startNode = preNode; startChar = 0;
+            endNode = preNode; endChar = 0;
+        }
 
         try {
             const sel = window.getSelection();
@@ -288,6 +282,7 @@ const Editor = {
                     const parent = tgtNode.parentNode;
                     const childIndex = Array.from(parent.childNodes).indexOf(tgtNode);
                     const finalIndex = tgtChar === 0 ? childIndex : childIndex + 1;
+                    
                     if (isStart) range.setStart(parent, finalIndex);
                     else range.setEnd(parent, finalIndex);
                 } else {
@@ -334,7 +329,7 @@ const Editor = {
         if (Editor.undoStack) Editor.undoStack.forEach(extractIds);
         if (Editor.redoStack) Editor.redoStack.forEach(extractIds);
 
-        // 3. Scansiona Template (Anche i Widget nidificati internamente!)
+        // 3. Scansiona Template (Anche i Widget nidificati internamente)
         if (AppState.templates) {
             AppState.templates.forEach(tpl => {
                 extractIds(tpl.content);
@@ -356,8 +351,70 @@ const Editor = {
             });
         }
 
-        // 4. Scansiona il contenuto nativo dei Database in RAM
+        // 4. Scansione Transitiva delle Dipendenze Relazionali e di Sistema
         if (AppState.databases) {
+            let dependenciesAdded = true;
+            while (dependenciesAdded) {
+                dependenciesAdded = false;
+                for (const dbId of Array.from(activeDbIds)) {
+                    const dbState = AppState.databases[dbId];
+                    if (!dbState) continue;
+
+                    // Sorgente di Viste Collegate o Tabelle Pivot
+                    if (dbState.sourceTableId && !activeDbIds.has(dbState.sourceTableId)) {
+                        activeDbIds.add(dbState.sourceTableId);
+                        dependenciesAdded = true;
+                    }
+
+                    // Relazioni, Rollup e Backlink tra tabelle
+                    if (Array.isArray(dbState.columns)) {
+                        dbState.columns.forEach(col => {
+                            if (col.targetTableId && !activeDbIds.has(col.targetTableId)) {
+                                activeDbIds.add(col.targetTableId);
+                                dependenciesAdded = true;
+                            }
+                            if (col.linkedTableId && !activeDbIds.has(col.linkedTableId)) {
+                                activeDbIds.add(col.linkedTableId);
+                                dependenciesAdded = true;
+                            }
+                        });
+                    }
+
+                    // Database bersaglio di pulsanti Macro
+                    if (Array.isArray(dbState.buttons)) {
+                        dbState.buttons.forEach(btn => {
+                            if (Array.isArray(btn.actionBlocks)) {
+                                btn.actionBlocks.forEach(blk => {
+                                    if (blk.targetDbId && blk.targetDbId !== 'THIS_ROW' && !activeDbIds.has(blk.targetDbId)) {
+                                        activeDbIds.add(blk.targetDbId);
+                                        dependenciesAdded = true;
+                                    }
+                                    if (blk.sourceDbId && !activeDbIds.has(blk.sourceDbId)) {
+                                        activeDbIds.add(blk.sourceDbId);
+                                        dependenciesAdded = true;
+                                    }
+                                });
+                            }
+                        });
+                    }
+
+                    // Database bersaglio di automazioni
+                    if (Array.isArray(dbState.automations)) {
+                        dbState.automations.forEach(auto => {
+                            if (Array.isArray(auto.actions)) {
+                                auto.actions.forEach(act => {
+                                    if (act.colId === 'SYS_ACTION' && act.type === 'insert_row' && act.value && !activeDbIds.has(act.value)) {
+                                        activeDbIds.add(act.value);
+                                        dependenciesAdded = true;
+                                    }
+                                });
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Scansiona il contenuto nativo dei Database in RAM per immagini o tracce audio
             Object.values(AppState.databases).forEach(state => {
                 if (state.rows) {
                     state.rows.forEach(row => {
@@ -373,7 +430,7 @@ const Editor = {
             });
         }
 
-        // 5. Purga DB Orfani
+        // 5. Purga DB Orfani autentici (preservando SYS_PROPERTIES_DB e le dipendenze transitive)
         if (AppState.databases) {
             Object.keys(AppState.databases).forEach(id => {
                 if (id === 'SYS_PROPERTIES_DB') return; 
@@ -407,9 +464,7 @@ const Editor = {
         const temp = document.createElement('div');
         temp.innerHTML = htmlString;
 
-        // FIX CURA APPUNTI: Prima di minificare, ispezioniamo tutti gli appunti inline nel JSON.
-        // Se nel passato (Bug noto) si erano salvati dei <p> o <div> al loro interno, li convertiamo in <br>
-        // riparando in modo automatico l'intera applicazione in modo retroattivo.
+        // Normalizzazione retroattiva degli appunti inline salvati con tag a blocco
         temp.querySelectorAll('.inline-note-data').forEach(dataSpan => {
             let inner = dataSpan.innerHTML;
             if (/<(div|p|ul|ol|li)[^>]*>/i.test(inner)) {
@@ -668,60 +723,5 @@ const Editor = {
             }
             editor.normalize();
         }
-    },
-
-    checkContext: () => {
-        if (!AppState.isEditMode) return;
-        Editor.updateToolbarFormatting();
-        Editor.enforceBoundaries();
-
-        const selection = window.getSelection();
-        if (selection.rangeCount === 0) {
-            Editor.currentContext = null;
-            return;
-        }
-
-        let node = selection.anchorNode;
-        let parent = (node.nodeType === 3) ? node.parentNode : node;
-
-        const isInsideColumn = parent.closest('.widget-type-columns') ? true : false;
-        const isInsideSimpleTable = parent.closest('.simple-table-wrapper') ? true : false;
-        
-        const isInsideDB = WidgetManager.isProtectedBlock(parent) && !isInsideColumn && !isInsideSimpleTable;
-        
-        Editor.toggleAdvancedToolbar(!isInsideDB);
-
-        let targetElement = null;
-        if (parent.closest('table')) targetElement = parent.closest('table');
-        else if (parent.closest('ul, ol')) targetElement = parent.closest('ul, ol');
-
-        Editor.currentContext = targetElement;
-    },
-
-    editContextElement: () => {
-        if (!Editor.currentContext) return;
-        const el = Editor.currentContext;
-        if (el.tagName === 'TABLE') {
-            TableManager.editCurrentTable(el);
-        } else if (el.tagName === 'UL' || el.tagName === 'OL') {
-            if (typeof UI !== 'undefined' && UI.Menu) {
-                const btn = document.getElementById('btnListMenu');
-                if (btn) Editor.openListMenu(null, 'btnListMenu');
-            }
-        }
-    },
-
-    toggleAdvancedToolbar: (enable) => {
-        const tb = document.getElementById('editorToolbar');
-        if (!tb) return;
-        
-        const buttons = tb.querySelectorAll('button:not([title*="Annulla Ultima"]):not([title*="Ripeti ("]):not([title="Maiuscolo/Minuscolo"])');
-        const dropdowns = tb.querySelectorAll('.color-picker-group');
-
-        buttons.forEach(btn => btn.disabled = !enable);
-        dropdowns.forEach(grp => {
-            if (!enable) grp.classList.add('disabled-tool');
-            else grp.classList.remove('disabled-tool');
-        });
     }
 };

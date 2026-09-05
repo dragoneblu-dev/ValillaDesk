@@ -1,13 +1,15 @@
 /**
  * editor-bookmarks.js
  * Sottomodulo di Editor.
- * Inserimento e manipolazione dei segnalibri nel testo, 
- * inclusa la gestione del cronjob globale in background per la notifica dei timer scaduti.
+ * Inserimento e manipolazione dei segnalibri nel testo,
+ * cronjob globale in background per la notifica dei timer scaduti,
+ * gestione resiliente dello Snooze e aggiornamento dinamico della sidebar.
  */
 
 Object.assign(Editor, {
     activeBookmark: null,
     _bookmarkInterval: null,
+    _lastTreeMinute: null,
 
     insertBookmark: () => {
         Editor.saveSnapshot();
@@ -69,8 +71,20 @@ Object.assign(Editor, {
         }
         
         marker.setAttribute('data-timer-expire', currentExpire.toString());
+
+        // Sincronizza immediatamente il content della nota attiva per allineare l'albero
+        if (AppState.currentNoteId) {
+            const curNote = Store.getNote(AppState.currentNoteId);
+            const editorEl = document.getElementById('noteContent');
+            if (curNote && editorEl) {
+                curNote.content = Editor.minifyHTMLForStorage(editorEl.innerHTML);
+                curNote.updatedAt = new Date().toISOString();
+            }
+        }
+
         Store.triggerAutoSave();
         Editor.updateBookmarkMenuDisplay(marker);
+        if (typeof UI !== 'undefined' && UI.renderTree) UI.renderTree();
         Editor.initBookmarkCron();
     },
 
@@ -78,8 +92,83 @@ Object.assign(Editor, {
         const marker = document.getElementById(id);
         if (!marker) return;
         marker.removeAttribute('data-timer-expire');
+
+        // Sincronizza immediatamente la rimozione dell'attributo nel content della nota attiva
+        if (AppState.currentNoteId) {
+            const curNote = Store.getNote(AppState.currentNoteId);
+            const editorEl = document.getElementById('noteContent');
+            if (curNote && editorEl) {
+                curNote.content = Editor.minifyHTMLForStorage(editorEl.innerHTML);
+                curNote.updatedAt = new Date().toISOString();
+            }
+        }
+
         Store.triggerAutoSave();
         Editor.updateBookmarkMenuDisplay(marker);
+        if (typeof UI !== 'undefined' && UI.renderTree) UI.renderTree();
+    },
+
+    snoozeBookmark: (noteId, bookmarkId, minutes) => {
+        if (!noteId) return;
+        const newExpire = Date.now() + (minutes * 60 * 1000);
+        let updated = false;
+
+        // 1. Gestione nota attiva a video
+        if (AppState.currentNoteId === noteId) {
+            const marker = (bookmarkId ? document.getElementById(bookmarkId) : null) || 
+                           document.querySelector('#noteContent .adv-bookmark-marker');
+            
+            if (marker) {
+                if (!marker.id) marker.id = bookmarkId || ('bkm_' + Store.generateId());
+                marker.setAttribute('data-timer-expire', newExpire.toString());
+                
+                if (Editor.activeBookmark === marker) {
+                    Editor.updateBookmarkMenuDisplay(marker);
+                }
+                
+                const editorEl = document.getElementById('noteContent');
+                if (editorEl) {
+                    const currentNote = Store.getNote(noteId);
+                    if (currentNote) {
+                        currentNote.content = Editor.minifyHTMLForStorage(editorEl.innerHTML);
+                        currentNote.updatedAt = new Date().toISOString();
+                    }
+                }
+                updated = true;
+            }
+        }
+
+        // 2. Gestione nota in background
+        if (!updated) {
+            const note = Store.getNote(noteId);
+            if (note && note.content) {
+                let regex = bookmarkId ? new RegExp(`(<span[^>]*id=["']${bookmarkId}["'][^>]*)(>)`, 'i') : null;
+                
+                if (!regex || !regex.test(note.content)) {
+                    regex = /(<span[^>]*class=["'][^"']*adv-bookmark-marker[^"']*["'][^>]*)(>)/i;
+                }
+
+                if (regex.test(note.content)) {
+                    let tagContent = note.content.match(regex)[1];
+                    tagContent = tagContent.replace(/\s*data-timer-expire=["']\d+["']/gi, '');
+                    if (!tagContent.includes('id=')) {
+                        tagContent += ` id="${bookmarkId || ('bkm_' + Store.generateId())}"`;
+                    }
+                    tagContent += ` data-timer-expire="${newExpire}"`;
+                    note.content = note.content.replace(regex, `${tagContent}>`);
+                    note.updatedAt = new Date().toISOString();
+                    updated = true;
+                }
+            }
+        }
+
+        if (updated) {
+            Store.triggerAutoSave();
+            if (typeof UI !== 'undefined') {
+                if (UI.renderTree) UI.renderTree();
+                if (UI.showToast) UI.showToast(`Promemoria posticipato di ${minutes} minuti.`, "info");
+            }
+        }
     },
 
     updateBookmarkMenuDisplay: (marker) => {
@@ -176,11 +265,28 @@ Object.assign(Editor, {
                 visibleMarkers.forEach(m => {
                     const exp = parseInt(m.getAttribute('data-timer-expire'));
                     if (now >= exp) {
+                        const bkmId = m.id || ('bkm_' + Store.generateId());
+                        m.id = bkmId;
+
                         m.removeAttribute('data-timer-expire');
+
+                        // Sincronizza subito il content della nota corrente prima dell'attivazione dell'allarme
+                        if (AppState.currentNoteId) {
+                            const curNote = Store.getNote(AppState.currentNoteId);
+                            const editorEl = document.getElementById('noteContent');
+                            if (curNote && editorEl) {
+                                curNote.content = Editor.minifyHTMLForStorage(editorEl.innerHTML);
+                                curNote.updatedAt = new Date().toISOString();
+                            }
+                        }
+
                         needsSave = true;
-                        
+
                         if (typeof UI !== 'undefined' && UI.Alarm) {
-                            UI.Alarm.trigger("⏱️ Timer Scaduto! (Nota attuale)");
+                            UI.Alarm.trigger("⏱️ Timer Scaduto! (Nota attuale)", {
+                                noteId: AppState.currentNoteId,
+                                bookmarkId: bkmId
+                            });
                         }
                         
                         if (Editor.activeBookmark === m) {
@@ -196,7 +302,6 @@ Object.assign(Editor, {
                     AppState.notes.forEach(note => {
                         if (!note.content) return;
                         
-                        // Cerca tutti i segnalibri con un timer nella stringa HTML
                         const regex = /<span[^>]*class=["'][^"']*adv-bookmark-marker[^"']*["'][^>]*data-timer-expire=["'](\d+)["'][^>]*>/gi;
                         let match;
                         let noteModified = false;
@@ -204,18 +309,23 @@ Object.assign(Editor, {
                         while ((match = regex.exec(note.content)) !== null) {
                             const expTime = parseInt(match[1]);
                             if (now >= expTime) {
-                                // Rimuoviamo l'attributo scaduto direttamente dalla stringa
                                 const originalTag = match[0];
-                                const cleanedTag = originalTag.replace(/data-timer-expire=["']\d+["']/, '');
+                                
+                                let tagWithId = originalTag;
+                                let idMatch = originalTag.match(/id=["'](bkm_[^"']+)["']/i);
+                                let bkmId = idMatch ? idMatch[1] : ('bkm_' + Store.generateId());
+                                if (!idMatch) {
+                                    tagWithId = originalTag.replace('<span', `<span id="${bkmId}"`);
+                                }
+
+                                const cleanedTag = tagWithId.replace(/\s*data-timer-expire=["']\d+["']/, '');
                                 note.content = note.content.replace(originalTag, cleanedTag);
                                 noteModified = true;
                                 needsSave = true;
 
-                                // Lanciamo l'allarme globale passando l'ID della nota
                                 if (typeof UI !== 'undefined' && UI.Alarm && note.id !== AppState.currentNoteId) {
                                     const safeTitle = (note.title || 'Senza Titolo').replace(/'/g, "\\'");
                                     
-                                    // Aggiungiamo un link per saltare alla nota
                                     const actionHtml = `
                                         <div style="margin-top: 5px;">
                                             <button class="btn" style="padding: 4px 8px; font-size: 0.8rem; border-color: var(--border-color); color: var(--text-primary);" onclick="UI.Alarm.stop(this.closest('.toast-msg').id); UI.selectNote('${note.id}')">
@@ -223,7 +333,10 @@ Object.assign(Editor, {
                                             </button>
                                         </div>
                                     `;
-                                    UI.Alarm.trigger(`⏱️ Timer Scaduto in background!<br>${actionHtml}`);
+                                    UI.Alarm.trigger(`⏱️ Timer Scaduto in background!<br>${actionHtml}`, {
+                                        noteId: note.id,
+                                        bookmarkId: bkmId
+                                    });
                                 }
                             }
                         }
@@ -231,8 +344,18 @@ Object.assign(Editor, {
                     });
                 }
 
+                // 3. Aggiornamento periodico della vista Segnalibri nella Sidebar (ogni 60 secondi)
+                const currentMinute = Math.floor(now / 60000);
+                if (Editor._lastTreeMinute !== currentMinute) {
+                    Editor._lastTreeMinute = currentMinute;
+                    if (AppState.showBookmarksInTree && typeof UI !== 'undefined' && UI.renderTree) {
+                        UI.renderTree();
+                    }
+                }
+
                 if (needsSave && typeof Store !== 'undefined') {
                     Store.triggerAutoSave();
+                    if (typeof UI !== 'undefined' && UI.renderTree) UI.renderTree();
                 }
 
             }, 1000);

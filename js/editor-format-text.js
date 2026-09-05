@@ -2,8 +2,7 @@
  * editor-format-text.js
  * Sottomodulo di Editor.
  * Gestione formattazioni inline, Menu Stile, Font e la "Gomma Draconiana" (Deep Sanitization).
- * FIX WHITE-LIST: Espansa categoricamente a tutti i sotto-componenti dei Widget per evitare la distruzione del DOM.
- * FIX COMMENTI: Ripristinata la documentazione logica dei passaggi di sanificazione.
+ * Tutela dell'infrastruttura Widget e dell'attributo 'start' degli elenchi numerati (OL).
  */
 
 Object.assign(Editor, {
@@ -259,8 +258,7 @@ Object.assign(Editor, {
 
         let range = selection.getRangeAt(0);
 
-        // FUNZIONE DI SICUREZZA: Controlla se il nodo fa parte di un'infrastruttura Widget 
-        // e non deve essere toccato dalla cancellazione.
+        // Controlla se il nodo fa parte di un'infrastruttura Widget
         const isSafeToTouch = (node) => {
             if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
             if (node.id === 'noteContent') return false;
@@ -288,7 +286,6 @@ Object.assign(Editor, {
         const allowedTags = ['B', 'I', 'U', 'S', 'A', 'P', 'SPAN', 'UL', 'OL', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD', 'BR', 'IMG', 'INPUT', 'SVG', 'PATH', 'POLYLINE', 'LINE', 'RECT', 'CIRCLE'];
         const allowedPrefixes = ['hl-', 'tx-', 'bg-', 'text-', 'ff-', 'fs-'];
         
-        // LA WHITELIST DEFINITIVA: Tutte le classi che costruiscono i widget e l'UI dell'editor.
         const allowedClasses = [
             // Link, Testo e Ricerca
             'internal-link', 'file-link', 'highlighted-text', 'search-highlight', 'active-highlight',
@@ -319,7 +316,6 @@ Object.assign(Editor, {
         let container = range.commonAncestorContainer;
         if (container.nodeType === 3) container = container.parentNode;
 
-        // Assicura che la pulizia avvenga al livello giusto, senza distruggere i wrapper
         let macroBlock = container.closest('table, ul, ol, blockquote, .journal-time-node');
         if (macroBlock && !WidgetManager.isProtectedBlock(macroBlock)) {
             if (macroBlock.classList.contains('journal-time-node')) container = macroBlock.querySelector('.journal-content');
@@ -361,22 +357,20 @@ Object.assign(Editor, {
             }
         }
 
-        // Togliamo la selezione dal browser PRIMA di alterare fisicamente il DOM
         selection.removeAllRanges();
 
-        // 2. Processa ed esegue la sanificazione "Bottom-Up" (dal figlio più piccolo al genitore)
+        // 2. Processa ed esegue la sanificazione "Bottom-Up"
         const processElement = (el) => {
             if (!document.body.contains(el)) return null; 
             
             const isInternalWidget = el.closest('.adv-widget-shell, .simple-table-wrapper, .adv-inline-shell');
 
-            // Protezione Firewall: Se l'elemento non è sicuro da toccare, saltalo.
             if (!isSafeToTouch(el)) return el;
 
             let currentEl = el;
             let tag = currentEl.tagName.toUpperCase();
 
-            // CONVERSIONE DIV IN P: Srotola i contenitori creati dal copia/incolla dal web
+            // Srotola i contenitori creati da copia/incolla
             if (!isInternalWidget && (tag === 'DIV' || tag === 'HEADER' || tag === 'FOOTER' || tag === 'ASIDE')) {
                 const p = document.createElement('p');
                 if (currentEl.className) p.className = currentEl.className;
@@ -390,7 +384,6 @@ Object.assign(Editor, {
                 tag = 'P';
             }
 
-            // Se il tag non è nella Whitelist (es. Section, Article), esplode preservando i figli
             if (!allowedTags.includes(tag)) {
                 const frag = document.createDocumentFragment();
                 while (currentEl.firstChild) frag.appendChild(currentEl.firstChild);
@@ -398,14 +391,17 @@ Object.assign(Editor, {
                 return null;
             }
 
-            // PULIZIA ATTRIBUTI (Stili Inline, ID orfani, Classi non autorizzate)
+            // PULIZIA ATTRIBUTI
             const attrs = Array.from(currentEl.attributes);
             attrs.forEach(attr => {
                 if (tag === 'SVG' && ['viewBox', 'width', 'height', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'].includes(attr.name)) return;
                 if (['PATH', 'POLYLINE', 'LINE', 'RECT', 'CIRCLE'].includes(tag) && ['d', 'points', 'x1', 'y1', 'x2', 'y2', 'x', 'y', 'width', 'height', 'cx', 'cy', 'r', 'rx', 'ry'].includes(attr.name)) return;
                 if (attr.name === 'href' && tag === 'A') return;
-                if (attr.name === 'src' && tag === 'IMG') return;
+                if (attr.name === 'src' && (tag === 'IMG' || tag === 'AUDIO')) return;
+                if (attr.name === 'controls' && tag === 'AUDIO') return;
                 if (attr.name === 'type' && ['UL', 'OL', 'INPUT'].includes(tag)) return;
+                // Preserva l'attributo semantico start degli elenchi numerati
+                if (attr.name === 'start' && tag === 'OL') return;
                 if (attr.name === 'contenteditable') return;
                 if (attr.name === 'id' && isInternalWidget) return;
 
@@ -417,7 +413,7 @@ Object.assign(Editor, {
                     if (currentEl.classList.contains('inline-note-data') && attr.value.includes('none')) {
                         currentEl.setAttribute('style', 'display: none;'); 
                     } else if (isInternalWidget) {
-                        return; // Non toccare mai gli stili dell'infrastruttura Widget!
+                        return;
                     } else {
                         currentEl.removeAttribute('style'); 
                     }
@@ -429,7 +425,6 @@ Object.assign(Editor, {
                 }
             });
 
-            // GOMMA SROTOLAMENTO: Rimuove i contenitori (SPAN) svuotati dagli attributi inutili
             if ((tag === 'FONT' || tag === 'SPAN') && !isInternalWidget) {
                 if (currentEl.attributes.length === 0) {
                     const parent = currentEl.parentNode;
@@ -442,10 +437,8 @@ Object.assign(Editor, {
             return currentEl;
         };
 
-        // Esegue l'inversione dell'array per processare Bottom-Up in modo sicuro
         elementsToClean.reverse().forEach(el => processElement(el));
 
-        // Rimette la selezione generica sul contenitore pulito
         try {
             const newRange = document.createRange();
             newRange.selectNodeContents(container);

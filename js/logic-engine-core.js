@@ -1,9 +1,7 @@
 /**
  * logic-engine-core.js
  * Nucleo del Motore Logico: Calcoli matematici e valutazione delle condizioni (WHERE e SET).
- * FIX ENGINE: L'esecuzione della Formula JS è stata portata in cima allo stack (Priorità 1) 
- * in 'calculateNewValue'. Questo permette l'uso di script JS universali anche per aggiornare 
- * tipi complessi come Date, Range di Date, Relazioni e Multi-Select in modo chirurgico.
+ * Esecuzione prioritaria di Formule JS e supporto calcolo dinamico offset per Oggi (+/- giorni) e Adesso (+/- minuti).
  */
 
 // UTILITY GLOBALE PER XSS (Scudo Iniezioni HTML)
@@ -164,7 +162,7 @@ const LogicEngine = {
             return false;
         }
 
-        // Operatori testuali Generici (anche i nuovi Contiene / Non contiene)
+        // Operatori testuali Generici (anche Contiene / Non contiene)
         if (operator === 'empty') return strVal === '';
         if (operator === 'not_empty') return strVal !== '';
         if (operator === '=') return strVal === tgtValLower;
@@ -220,7 +218,7 @@ const LogicEngine = {
             isFormulaExec = true;
         }
 
-        // 2. GESTIONE DATE (Può estrarre il dato dalla formula appena calcolata)
+        // 2. GESTIONE DATE E DATE-TIME (Con supporto a Shift giorni / minuti)
         if (['date', 'datetime'].includes(colDef.type)) {
             const isDateTime = colDef.type === 'datetime';
             let dateObj = (typeof currentVal === 'object' && currentVal !== null) ? { ...currentVal } : { start: currentVal || '', end: '' };
@@ -245,6 +243,20 @@ const LogicEngine = {
 
             const now = new Date();
 
+            // Calcolo della data odierna con eventuale offset in giorni (+/-)
+            const getShiftedDate = (days) => {
+                const d = new Date(now);
+                d.setDate(d.getDate() + days);
+                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                return d.toISOString().split('T')[0];
+            };
+
+            // Calcolo dell'ora attuale con eventuale offset in minuti (+/-)
+            const getShiftedDateTime = (minutes) => {
+                const d = new Date(now.getTime() + (minutes * 60000));
+                return genDateStr(d);
+            };
+
             // Applica Formula Risultato
             if (actType === 'set_start_formula') {
                 dateObj.start = formulaResult;
@@ -258,14 +270,13 @@ const LogicEngine = {
             if (actType === 'set_end_formula') {
                 dateObj.end = formulaResult;
                 if (colDef.hasEndDate && dateObj.start && dateObj.end) {
-                    if (new Date(dateObj.end).getTime() < new Date(dateObj.start).getTime()) {
+                    if (new Date(dateObj.start).getTime() < new Date(dateObj.end).getTime()) {
                         dateObj.start = dateObj.end;
                     }
                 }
                 return colDef.hasEndDate ? dateObj : dateObj.start;
             }
             if (actType === 'set_formula') {
-                // Fallback: se usano la "formula generica" su una data e restituiscono un oggetto JSON
                 try {
                     const parsed = JSON.parse(formulaResult);
                     if (parsed && (parsed.start !== undefined || parsed.end !== undefined)) return parsed;
@@ -274,19 +285,57 @@ const LogicEngine = {
                 return colDef.hasEndDate ? dateObj : dateObj.start;
             }
 
-            // Operatori Statici Date
+            // Operatori Dinamici con Spostamento Giorni / Minuti
             if (actType === 'set_today') {
-                const td = now.toISOString().split('T')[0];
-                if (colDef.hasEndDate) dateObj.start = td; else return td;
+                const dayShift = parseInt(val1, 10) || 0;
+                const td = getShiftedDate(dayShift);
+                if (colDef.hasEndDate) {
+                    dateObj.start = td;
+                    if (dateObj.end && new Date(dateObj.start).getTime() > new Date(dateObj.end).getTime()) {
+                        dateObj.end = dateObj.start;
+                    }
+                    return dateObj;
+                } else return td;
             } 
             else if (actType === 'set_datetime') {
-                const ns = genDateStr(now);
-                if (colDef.hasEndDate) dateObj.start = ns; else return ns;
+                const minShift = parseInt(val1, 10) || 0;
+                const ns = getShiftedDateTime(minShift);
+                if (colDef.hasEndDate) {
+                    dateObj.start = ns;
+                    if (dateObj.end && new Date(dateObj.start).getTime() > new Date(dateObj.end).getTime()) {
+                        dateObj.end = dateObj.start;
+                    }
+                    return dateObj;
+                } else return ns;
             }
-            else if (actType === 'set_start_today') dateObj.start = now.toISOString().split('T')[0];
-            else if (actType === 'set_end_today') dateObj.end = now.toISOString().split('T')[0];
-            else if (actType === 'set_start_now') dateObj.start = genDateStr(now);
-            else if (actType === 'set_end_now') dateObj.end = genDateStr(now);
+            else if (actType === 'set_start_today') {
+                const dayShift = parseInt(val1, 10) || 0;
+                dateObj.start = getShiftedDate(dayShift);
+                if (colDef.hasEndDate && dateObj.end && new Date(dateObj.start).getTime() > new Date(dateObj.end).getTime()) {
+                    dateObj.end = dateObj.start;
+                }
+            }
+            else if (actType === 'set_end_today') {
+                const dayShift = parseInt(val1, 10) || 0;
+                dateObj.end = getShiftedDate(dayShift);
+                if (colDef.hasEndDate && dateObj.start && new Date(dateObj.start).getTime() > new Date(dateObj.end).getTime()) {
+                    dateObj.start = dateObj.end;
+                }
+            }
+            else if (actType === 'set_start_now') {
+                const minShift = parseInt(val1, 10) || 0;
+                dateObj.start = getShiftedDateTime(minShift);
+                if (colDef.hasEndDate && dateObj.end && new Date(dateObj.start).getTime() > new Date(dateObj.end).getTime()) {
+                    dateObj.end = dateObj.start;
+                }
+            }
+            else if (actType === 'set_end_now') {
+                const minShift = parseInt(val1, 10) || 0;
+                dateObj.end = getShiftedDateTime(minShift);
+                if (colDef.hasEndDate && dateObj.start && new Date(dateObj.start).getTime() > new Date(dateObj.end).getTime()) {
+                    dateObj.start = dateObj.end;
+                }
+            }
             else if (actType === 'math_date_add') {
                 if (colDef.hasEndDate) dateObj.start = doMath(dateObj.start, val1, val2, false);
                 else return doMath(dateObj.start, val1, val2, false);

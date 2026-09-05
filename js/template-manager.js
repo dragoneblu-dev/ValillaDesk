@@ -3,6 +3,8 @@
  * Modulo per la gestione, l'instanziazione e il Deep-Cloning dei Page Templates.
  * FIX ZOOM: Applicato zoom al 50% tramite CSS Zoom (o Trasform in fallback).
  * FIX TITOLO: Applicare un template non sovrascrive più il titolo della nuova nota.
+ * FIX PERSISTENZA: note.content viene rigorosamente minificato prima del salvataggio,
+ * prevenendo la contaminazione da nodi DOM di runtime non sanitizzati.
  */
 
 const TemplateManager = {
@@ -272,9 +274,17 @@ const TemplateManager = {
         tpl.lastUsed = new Date().toISOString();
         TemplateManager.toggleEmptyOverlay();
 
+        // 1. Montaggio e re-idratazione visiva dei widget nell'editor attivo
         if (typeof WidgetManager !== 'undefined') WidgetManager.mountAll(editorEl);
         
-        note.content = editorEl.innerHTML;
+        // 2. Persistenza pulita: memorizza solo il markup HTML minificato senza residui di runtime
+        if (typeof Editor !== 'undefined' && typeof Editor.getCleanHTML === 'function') {
+            note.content = Editor.getCleanHTML();
+        } else if (typeof Editor !== 'undefined' && typeof Editor.minifyHTMLForStorage === 'function') {
+            note.content = Editor.minifyHTMLForStorage(editorEl.innerHTML);
+        } else {
+            note.content = editorEl.innerHTML;
+        }
         note.updatedAt = new Date().toISOString();
 
         Store.triggerAutoSave();

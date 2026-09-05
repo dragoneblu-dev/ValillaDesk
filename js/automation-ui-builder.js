@@ -2,10 +2,7 @@
  * automation-ui-builder.js
  * Modulo dedicato alla generazione dell'HTML per le Interfacce di Automazioni e Pulsanti Macro.
  * Risolve la duplicazione di codice (DRY) astraendo la costruzione di Filtri e Azioni.
- * FIX FILTRI: Inserita la pseudo-colonna "SYS_JS_FORMULA" per abilitare condizioni personalizzate.
- * FIX UI FORMULE: Qualsiasi azione di tipo formula (es. set_start_formula) ora scatena
- * il layout espanso (verticale) con la Textarea maggiorata e la preview Live.
- * REFACTOR COLORI: Astratta la generazione della Palette Cromatico-Condizionale per ridurre il payload HTML e garantire uniformità.
+ * Risoluzione esatta dell'ID database per il pulsante 'Copia Prompt AI'.
  */
 
 const AutomationUIBuilder = {
@@ -54,6 +51,7 @@ const AutomationUIBuilder = {
         });
 
         const dbName = isThisRow ? 'Questa Riga' : (targetState ? targetState.title : 'Nessun DB');
+        const resolvedTargetDbId = (targetState && targetState.id) ? targetState.id : (blk.targetDbId && blk.targetDbId !== 'THIS_ROW' ? blk.targetDbId : '');
         
         let actionTitle = 'Modifica Righe';
         if (blk.actionType === 'insert') actionTitle = 'Aggiungi Riga Singola';
@@ -203,6 +201,7 @@ const AutomationUIBuilder = {
                 const hasFormula = blk.actions.some(a => a.type.includes('formula'));
                 let aiHelper = '';
                 if (hasFormula) {
+                    const btnAiId = `btnCopyAutoAIPrompt_${allowThisRow ? 'colbtn_' : ''}${blk.id}`;
                     aiHelper = `
                     <div style="background: rgba(37, 99, 235, 0.05); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(37, 99, 235, 0.2); margin-bottom: 10px; font-size: 0.8rem; display:flex; align-items:center; gap:10px;">
                         <span style="display:inline-flex; color:var(--accent-color);">${Icons.formula}</span>
@@ -211,7 +210,7 @@ const AutomationUIBuilder = {
                             <code>riga</code> = Dati della riga bersaglio (Destinazione).<br>
                             <code>origine</code> = Dati di <b>Questa Riga</b> in cui hai cliccato il pulsante!
                         </div>
-                        <button id="btnCopyAutoAIPrompt_${blk.id}" class="btn" style="padding: 4px 8px; font-size: 0.75rem; flex-shrink:0;" onclick="LogicEngine.copyAutomationAIPrompt(event, '${targetState.id}', 'btnCopyAutoAIPrompt_${blk.id}')" title="Copia Prompt per AI">
+                        <button id="${btnAiId}" class="btn" style="padding: 4px 8px; font-size: 0.75rem; flex-shrink:0;" onclick="LogicEngine.copyAutomationAIPrompt(event, '${resolvedTargetDbId}', '${btnAiId}')" title="Copia Prompt per AI">
                             <span style="display:inline-flex; align-items:center; gap:5px;">${Icons.clipboard} Copia Prompt AI</span>
                         </button>
                     </div>`;
@@ -260,17 +259,14 @@ const AutomationUIBuilder = {
                     let valInputHTML = '';
 
                     if (act.type === 'color_row') {
-                        // LA MODIFICA: Utilizzo dell'helper centrale per i colori
                         const changeScript = `${changeCallback}('value', '$$VAL$$'); ${callbacks.onRefresh}();`;
                         const colorSwatches = AutomationUIBuilder.getColorSwatchesHTML(act.value, changeScript);
 
-                        // Analisi del valore attuale (Se inizia con '=' è una formula JS)
                         const rawOp = act.value2 !== undefined && act.value2 !== '' ? String(act.value2) : '100';
                         const isFormulaOp = rawOp.startsWith('=');
                         const cleanOp = isFormulaOp ? rawOp.substring(1).trim() : rawOp;
                         const safeOpVal = cleanOp.replace(/"/g, '&quot;');
 
-                        // Costruiamo la UI che disaccoppia visivamente il prefisso =
                         let opInput = `
                             <div style="display:flex; align-items:center; gap:5px; margin-left:auto; padding:4px 8px; border-radius:4px; border:1px solid var(--border-color); flex-shrink:0;">
                                 <span style="font-size:0.75rem; color:var(--text-secondary); font-weight:bold;">Opacità:</span>
@@ -292,11 +288,9 @@ const AutomationUIBuilder = {
 
                         valInputHTML = `<div style="display:flex; align-items:center; gap:10px; width:100%; flex-wrap:wrap;">${colorSwatches}${opInput}</div>`;
                     } else {
-                        // Render Standard
                         valInputHTML = LogicEngine.getActionInputHTML(aColDef, act.type, act.value, act.value2, targetState, changeCallback, { sourceDbId: blk.sourceDbId, inputId: inputId });
                     }
 
-                    // LA MODIFICA: Uso .includes() per scattare sia su set_formula che set_start_formula o set_end_formula
                     const isFormula = act.type && act.type.includes('formula');
                     const prevId = `prev_btn_${blk.id}_${actIndex}`;
 
@@ -330,6 +324,7 @@ const AutomationUIBuilder = {
                 const hasFormula = blk.actions.some(a => a.type && a.type.includes('formula'));
                 let aiHelper = '';
                 if (hasFormula) {
+                    const btnAiId = `btnCopyAutoAIPrompt_${allowThisRow ? 'colbtn_' : ''}${blk.id}`;
                     aiHelper = `
                     <div style="background: rgba(37, 99, 235, 0.05); padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(37, 99, 235, 0.2); margin-bottom: 10px; font-size: 0.8rem; display:flex; align-items:center; gap:10px;">
                         <span style="display:inline-flex; color:var(--accent-color);">${Icons.formula}</span>
@@ -338,7 +333,7 @@ const AutomationUIBuilder = {
                             <code>riga</code> = Dati della riga bersaglio (Destinazione).<br>
                             <code>origine</code> = Dati di <b>Questa Riga</b> in cui hai cliccato il pulsante!
                         </div>
-                        <button id="btnCopyAutoAIPrompt_${blk.id}" class="btn" style="padding: 4px 8px; font-size: 0.75rem; flex-shrink:0;" onclick="LogicEngine.copyAutomationAIPrompt(event, '${targetState.id}', 'btnCopyAutoAIPrompt_${blk.id}')" title="Copia Prompt per AI">
+                        <button id="${btnAiId}" class="btn" style="padding: 4px 8px; font-size: 0.75rem; flex-shrink:0;" onclick="LogicEngine.copyAutomationAIPrompt(event, '${resolvedTargetDbId}', '${btnAiId}')" title="Copia Prompt per AI">
                             <span style="display:inline-flex; align-items:center; gap:5px;">${Icons.clipboard} Copia Prompt AI</span>
                         </button>
                     </div>`;
