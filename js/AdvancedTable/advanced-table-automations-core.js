@@ -1,9 +1,9 @@
 /**
  * AdvancedTableAutomations-Core.js
  * ENGINE LOGICO: Valutazione delle regole (evaluate), parsing date, esecuzione massiva.
- * FIX TRIGGER: Corretto il bug che impediva alle automazioni di scattare nei Database 
- * di Sistema (Headless/Invisibili). I trigger si valutano in modo indipendente dall'interfaccia.
- * FEAT: Supporto per Opacità Dinamica nell'azione color_row.
+ * Valutazione indipendente dall'interfaccia per i Database di Sistema.
+ * Supporto per Opacità Dinamica nell'azione color_row.
+ * Isolamento tra azioni globali (scatto singolo) e azioni a riga nel Cron Engine.
  */
 
 const AdvancedAutomations = {
@@ -45,7 +45,7 @@ const AdvancedAutomations = {
                     const timerTrigger = auto.triggers.find(t => t.colId === 'SYS_TIMER');
                     if (!timerTrigger) continue;
 
-                    let shouldFireForAllRows = false;
+                    let isTimeTriggerFired = false;
                     let fireForSpecificRows = [];
 
                     if (timerTrigger.operator === 'col_reference') {
@@ -102,7 +102,7 @@ const AdvancedAutomations = {
                             const targetStr = `${targetDate.getFullYear()}-${t_mm}-${t_dd} ${t_hh}:${t_min}`;
                             
                             if (targetStr === currentMinuteStr && auto._lastFired !== currentMinuteStr) {
-                                shouldFireForAllRows = true;
+                                isTimeTriggerFired = true;
                             }
                         }
                     } else if (timerTrigger.operator === 'formula') {
@@ -132,22 +132,40 @@ const AdvancedAutomations = {
                         }
 
                         if (dayMatch && timerTrigger.value === currentHourMinute && auto._lastFired !== currentMinuteStr) {
-                            shouldFireForAllRows = true;
+                            isTimeTriggerFired = true;
                         }
                     }
 
-                    if (shouldFireForAllRows) {
+                    // Esecuzione controllata: separazione tra azioni globali (scatto singolo) e aggiornamento righe
+                    if (isTimeTriggerFired) {
                         auto._lastFired = currentMinuteStr;
                         AdvancedTable.setState(tId, state);
-                        if (state.rows) {
-                            let timerChanged = false;
+
+                        const hasRowUpdates = auto.actions.some(a => a.colId !== 'SYS_ACTION' || a.type === 'color_row');
+                        const hasSystemActions = auto.actions.some(a => a.colId === 'SYS_ACTION' && a.type !== 'color_row');
+
+                        let tableUpdated = false;
+
+                        // 1. Azioni di sistema scattano una sola volta
+                        if (hasSystemActions) {
+                            const mockRow = (state.rows && state.rows.length > 0) 
+                                ? state.rows[0] 
+                                : { id: 'sys_cron_mock', createdAt: Date.now(), updatedAt: Date.now(), cells: {} };
+
+                            const changed = await AdvancedAutomations.evaluate(tId, mockRow.id, false, null, null, true, null, auto.id, false, 0, true);
+                            if (changed) tableUpdated = true;
+                        }
+
+                        // 2. Modifiche a colonne di riga vengono iterate sulle righe reali della tabella
+                        if (hasRowUpdates && state.rows && state.rows.length > 0) {
                             for (const row of state.rows) {
-                                const changed = await AdvancedAutomations.evaluate(tId, row.id, false, null, null, true, null, auto.id, false, 0);
-                                if (changed) timerChanged = true;
+                                const changed = await AdvancedAutomations.evaluate(tId, row.id, false, null, null, true, null, auto.id, false, 0, false);
+                                if (changed) tableUpdated = true;
                             }
-                            if (timerChanged && document.getElementById(tId)) {
-                                AdvancedTable.renderTable(tId);
-                            }
+                        }
+
+                        if (tableUpdated && document.getElementById(tId)) {
+                            AdvancedTable.renderTable(tId);
                         }
                     } else if (fireForSpecificRows.length > 0) {
                         AdvancedTable.setState(tId, state);
@@ -199,7 +217,6 @@ const AdvancedAutomations = {
             
             if (hasCrossDbListener && state.rows) {
                 for (const r of state.rows) {
-                    // FIX BUG 3: Passaggio ricorsivo del livello di profondità per prevenire falsi loop infiniti
                     await AdvancedAutomations.evaluate(tId, r.id, false, null, sourceTableId, false, null, null, false, recursionDepth + 1);
                 }
             }
@@ -374,10 +391,9 @@ const AdvancedAutomations = {
         return new Date(dateStr).getTime();
     },
 
-    evaluate: async (tableId, rowId, isNewRow = false, oldRowContext = null, crossDbTriggerId = null, isTimerEvent = false, noteChangeOverride = null, targetAutoId = null, isOnLoadEvent = false, recursionDepth = 0) => {
+    evaluate: async (tableId, rowId, isNewRow = false, oldRowContext = null, crossDbTriggerId = null, isTimerEvent = false, noteChangeOverride = null, targetAutoId = null, isOnLoadEvent = false, recursionDepth = 0, isSystemActionOnly = false) => {
         
-        // FIX BUG 3: Controllo del Loop dipendente dalla profondità di ricorsione e non globale.
-        // Questo libera il Cron Engine e i pulsanti dall'essere bloccati.
+        // Controllo del loop dipendente dalla profondità di ricorsione
         if (recursionDepth > 10) {
             console.warn(`⚠️ LOOP INFINITO BLOCCATO al livello di ricorsione ${recursionDepth}. L'automazione A sta chiamando B che chiama A ripetutamente.`);
             return false;
@@ -386,8 +402,11 @@ const AdvancedAutomations = {
         let state = AdvancedTable.getState(tableId);
         if (!state.automations || state.automations.length === 0) return false;
 
-        let row = state.rows.find(r => r.id === rowId);
-        if (!row) return false;
+        let row = state.rows ? state.rows.find(r => r.id === rowId) : null;
+        if (!row && !isSystemActionOnly) return false;
+        if (!row) {
+            row = { id: rowId, createdAt: Date.now(), updatedAt: Date.now(), cells: {} };
+        }
 
         let rowChanged = false;
         let visualChanged = false;
@@ -429,7 +448,7 @@ const AdvancedAutomations = {
 
                     if (t.colId === 'SYS_NEW_ROW' || t.colId === 'SYS_ANY_CHANGE' || t.colId === 'SYS_TIMER' || t.colId === 'SYS_CROSS_DB' || t.colId === 'SYS_ON_LOAD') {
                         if (t.colId === 'SYS_NEW_ROW' && !isNewRow) allMatch = false;
-                        continue; // Per SYS_ANY_CHANGE, allMatch rimane true (il trigger è considerato valido)
+                        continue;
                     }
 
                     let isNoteField = false;
@@ -463,29 +482,6 @@ const AdvancedAutomations = {
                                 cellValRaw = '';
                             }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// MAURO: È da verificare se con questo codice Le combinazioni Multiple funzionano oppure no
-
-                            // FIX RECORD_NOTE TITLE TRIGGER:
                             if (oldRowContext) {
                                 const oldLinkedNoteId = oldRowContext.cells[realColId];
                                 if (oldLinkedNoteId) {
@@ -495,29 +491,6 @@ const AdvancedAutomations = {
                             } else {
                                 oldCellValRaw = cellValRaw; 
                             }
-
-// MAURO: È da verificare se con questo codice Le combinazioni Multiple funzionano oppure no
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                         }
                     }
 
@@ -562,12 +535,23 @@ const AdvancedAutomations = {
                                             newTitle = await AdvancedTable.executeAsyncScript(newTitle.substring(1), row, state.columns, tableId, state.title, vRow.virtualCells);
                                         }
                                         const nRow = { id: 'r' + Date.now() + Math.random().toString(36).substr(2, 5), createdAt: Date.now(), updatedAt: Date.now(), cells: {} };
-                                        targetState.columns.forEach(c => nRow.cells[c.id] = (c.type === 'checkbox' ? false : (['multi-select', 'relation'].includes(c.type) ? [] : '')));
+                                        targetState.columns.forEach(c => {
+                                            if (c.type === 'checkbox') nRow.cells[c.id] = false;
+                                            else if (['multi-select', 'relation'].includes(c.type)) nRow.cells[c.id] = [];
+                                            else if (['date', 'datetime'].includes(c.type)) nRow.cells[c.id] = c.hasEndDate ? { start: '', end: '' } : '';
+                                            else nRow.cells[c.id] = '';
+                                        });
                                         nRow.cells[targetState.columns[0].id] = newTitle;
                                         targetState.rows.push(nRow);
                                         
                                         AdvancedTable.setState(targetDbId, targetState);
                                         AdvancedTable.renderTable(targetDbId);
+                                        AdvancedTable.updateDependentViews(targetDbId);
+
+                                        // Persistenza automatica della nuova riga creata
+                                        if (typeof Store !== 'undefined') {
+                                            Store.triggerAutoSave();
+                                        }
 
                                         // Passaggio della profondità ricorsiva per inibizione Loop
                                         await AdvancedAutomations.evaluate(targetDbId, nRow.id, true, null, null, false, null, null, false, recursionDepth + 1);
@@ -577,7 +561,7 @@ const AdvancedAutomations = {
                                     }
                                 }
                             }
-                            else if (actType === 'color_row') {
+                            else if (actType === 'color_row' && !isSystemActionOnly) {
                                 let opVal = act.value2 !== undefined && act.value2 !== '' ? act.value2 : '100';
                                 if (String(opVal).startsWith('=')) {
                                     opVal = await AdvancedTable.executeAsyncScript(opVal.substring(1), row, state.columns, tableId, state.title, vRow.virtualCells);
@@ -591,6 +575,8 @@ const AdvancedAutomations = {
                             }
                             continue; 
                         }
+
+                        if (isSystemActionOnly) continue;
 
                         let targetColDef = state.columns.find(c => c.id === act.colId);
                         if (!targetColDef) continue;
@@ -684,7 +670,6 @@ const AdvancedAutomations = {
 
                 // Se stiamo aggiornando un database di sistema (Proprietà) 
                 // e questo record corrisponde alla nota correntemente aperta, forziamo l'aggiornamento grafico
-                // del drawer e dell'icona Proprietà della nota attiva.
                 if (tableId === 'SYS_PROPERTIES_DB') {
                     if (typeof UI !== 'undefined' && typeof UI.checkAndUpdatePropertiesIcon === 'function') {
                         UI.checkAndUpdatePropertiesIcon(row.cells['sys_c_note']);

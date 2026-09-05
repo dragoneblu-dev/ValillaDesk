@@ -1,16 +1,9 @@
 /**
  * AdvancedTableActions.js
  * Modifiche strutturali complesse, Drag&Drop, Resize, Modali e Controlli Relazioni / Rollup.
- * REFACTOR: La funzione runCellMacro usa ora il motore centralizzato in logic-engine per 
- * processare i blocchi azione, eliminando la duplicazione massiva.
- * FIX PERFORMANCE RELAZIONI: Ottimizzato in modo estremo il rendering delle opzioni relazione.
- * Evita il calcolo delle "Virtual Row" (Formule/Rollup) per tutti i record se non necessario.
- * FIX REGRESSIONE FORMULE: Ripristinato l'uso di buildVirtualRow nel pannello di selezione
- * per calcolare on-the-fly i nomi basati su formule JS senza creare paradossi di astrazione.
- * FIX PAGINAZIONE RELAZIONI: Sostituito il "Load All" con un caricamento incrementale (Lazy Loading) a scaglioni di 50
- * per evitare il blocco del browser in caso di database con migliaia di righe.
- * FIX TYPE ERROR: Aggiunto controllo rigoroso Array.isArray(s.columns) in updateTitle e deleteTable 
- * per prevenire crash (forEach is not a function) dovuti a widget corrotti o estranei (es. Diari, Barre Pulsanti).
+ * Esecuzione macro con LogicEngine centralizzato.
+ * Ottimizzazione rendering relazioni e paginazione incrementale.
+ * Mappatura ID garantita per la generazione dei Prompt AI.
  */
 
 Object.assign(AdvancedTable, {
@@ -71,7 +64,7 @@ Object.assign(AdvancedTable, {
         if (oldTitle && oldTitle !== finalTitle && !state.isLinkedView && !state.isPivot) {
             const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const regex1 = new RegExp(`tabella\\[['"]${escapeRegExp(oldTitle)}['"]\\]`, 'g');
-            const replace1 = `tabella["${finalTitle}"]`;
+            const replace1 = `tabella["${finalTitle.replace(/"/g, '\\"')}"]`;
 
             Object.keys(AppState.databases).forEach(id => {
                 let s = AppState.databases[id];
@@ -84,6 +77,9 @@ Object.assign(AdvancedTable, {
                             sChanged = true;
                         }
                     });
+                }
+                if (sChanged) {
+                    AdvancedTable.setState(id, s);
                 }
             });
         }
@@ -783,7 +779,7 @@ Object.assign(AdvancedTable, {
                     if (col.targetTableId === sourceTableId && relatedRowId === sourceRowId) {
                         return true;
                     }
-                    if (AdvancedTable.checkCircularRelation(sourceTableId, sourceRowId, col.targetTableId, relatedRowId, visited)) {
+                    if (AdvancedTable.checkCircularRelation(sourceTableId, sourceRowId, col.targetTableId, relatedRowId, new Set(visited))) {
                         return true;
                     }
                 }
@@ -936,9 +932,22 @@ Object.assign(AdvancedTable, {
     },
     
     deleteTable: (tableId, force = false) => {
+        // GESTIONE CITAZIONE (Transclusion): Se l'elemento rimosso è una citazione di un database,
+        // rimuove solo il contenitore visivo senza distruggere lo stato del database originale né le sue pagine record!
+        const isCitation = tableId.includes('_cited_') || (document.getElementById(tableId) && document.getElementById(tableId).closest('.block-citation'));
+        if (isCitation) {
+            if (!force && !confirm("Rimuovere questa visualizzazione del database citato? Il database originale non verrà modificato.")) return;
+            const wrapper = document.getElementById(tableId);
+            if (wrapper) wrapper.remove();
+            AdvancedTable.closeDropdowns(true);
+            if (typeof Editor !== 'undefined') Editor.sanitizeContent();
+            if (typeof Store !== 'undefined') Store.triggerAutoSave();
+            return;
+        }
+
         let state = AdvancedTable.getState(tableId);
         
-        // --- FIX SYSTEM DB PROTECTION: Soft Delete (Delete DOM, Keep Data) ---
+        // --- SYSTEM DB PROTECTION: Soft Delete (Delete DOM, Keep Data) ---
         const realTableId = AdvancedTable._resolveSourceId(tableId);
         if (realTableId === 'SYS_PROPERTIES_DB') {
             const wrapper = document.getElementById(tableId);
@@ -962,7 +971,7 @@ Object.assign(AdvancedTable, {
             if (AppState.databases) {
                 Object.keys(AppState.databases).forEach(id => {
                     const s = AppState.databases[id];
-                    // FIX TYPE ERROR: Aggiunto controllo rigoroso Array.isArray(s.columns)
+                    // Controllo rigoroso Array.isArray(s.columns)
                     if (id === tableId || !s || !Array.isArray(s.columns)) return;
                     
                     s.columns.forEach(c => {
@@ -983,7 +992,7 @@ Object.assign(AdvancedTable, {
 
         if (!force && !confirm(msg)) return;
 
-        // FIX TYPE ERROR: Aggiunto controllo rigoroso Array.isArray(state.columns)
+        // Controllo rigoroso Array.isArray(state.columns)
         if (!state.isLinkedView && !state.isPivot && Array.isArray(state.columns)) {
             state.columns.filter(c => c.type === 'record_note').forEach(c => {
                 state.rows.forEach(r => {
@@ -1100,6 +1109,7 @@ Object.assign(AdvancedTable, {
     _renderButtonColBuilder: () => {
         const { tableId, config } = AdvancedTable._tempColButtonConfig;
         const hostState = AdvancedTable.getState(tableId); 
+        if (hostState) hostState.id = tableId;
 
         const dbList = AutomationUIBuilder.getAvailableDatabases();
 
@@ -1176,8 +1186,10 @@ Object.assign(AdvancedTable, {
                 const isThisRow = blk.targetDbId === 'THIS_ROW';
                 const targetDbToRead = isThisRow ? tableId : blk.targetDbId;
                 const targetState = targetDbToRead ? AdvancedTable.getTableState(targetDbToRead) : null;
+                if (targetState) targetState.id = targetDbToRead;
                 
                 const sourceState = blk.sourceDbId ? AdvancedTable.getTableState(blk.sourceDbId) : hostState;
+                if (sourceState) sourceState.id = blk.sourceDbId || tableId;
                 
                 html += AutomationUIBuilder.buildActionBlockCard(blk, index, dbList, isThisRow, targetState, sourceState, formulaPreviews, callbacks, true);
             });

@@ -4,6 +4,7 @@
  * FIX COLORI: Adesso i colori delle palette leggono dinamicamente le variabili definite in variables.css.
  * FIX: Layout della Torta/Ciambella con marginazione dinamica e Flexbox affiancato.
  * FIX: Rimozione di alias obsoleti per il salvataggio della configurazione.
+ * FIX: Risolta registrazione ripetuta del plugin ChartDataLabels.
  */
 
 const AdvancedTableCharts = {
@@ -206,7 +207,6 @@ const AdvancedTableCharts = {
         if (isPie) {
             customPlugins.push(AdvancedTableCharts._getCustomDataLabelsPlugin());
         } else if (hasDataLabelsPlugin) {
-            Chart.register(ChartDataLabels);
             customPlugins.push(ChartDataLabels);
         }
 

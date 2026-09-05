@@ -1,8 +1,9 @@
 /**
  * AdvancedTableColumnMenus.js
  * Menu Contestuali per la singola Colonna: Cambio Tipo, Rinomina, Sposta, Elimina.
- * FIX UX: Aggiunta opzione esplicita "Configura Relazione" con popup di alert per la prevenzione della perdita dati.
- * FEAT VISIBILITÀ: Aggiunto comando rapido per nascondere/mostrare il campo (Gestito dinamicamente anche dal Drawer).
+ * Configurazione esplicita per relazioni con popup di alert per la prevenzione perdita dati.
+ * Gestione dinamica della visibilità del campo (compatibile con griglia e Drawer).
+ * Pulizia a cascata dello stato (sort, filtri, viste e formattazione condizionale) su eliminazione colonna.
  */
 
 const AdvancedTableColumnMenus = {
@@ -220,9 +221,6 @@ const AdvancedTableColumnMenus = {
         AdvancedTable.openRelationConfig(realTableId, colId);
     },
 
-    // ----------------------------------------------------------------------
-    // FEAT: Nascondi/Mostra Campo
-    // ----------------------------------------------------------------------
     toggleVisibility: (tableId, colId) => {
         let state = AdvancedTable.getState(tableId);
 
@@ -240,11 +238,8 @@ const AdvancedTableColumnMenus = {
         const idx = hiddenList.indexOf(colId);
 
         if (idx > -1) {
-            // Mostra (Rimuove dalla lista dei nascosti)
             hiddenList.splice(idx, 1);
         } else {
-            // Nascondi (Aggiunge alla lista)
-            // Previene di nascondere l'ultima colonna rimasta!
             if (state.columns.length - hiddenList.length <= 1) {
                 alert("Impossibile nascondere l'unica colonna visibile rimasta.");
                 return;
@@ -252,17 +247,14 @@ const AdvancedTableColumnMenus = {
             hiddenList.push(colId);
         }
 
-        // Pulisce l'attributo obsoleto .hidden se presente
         state.columns.forEach(c => delete c.hidden);
 
         AdvancedTable.setState(tableId, state);
 
-        // Se l'utente ha fatto click dal Drawer laterale, lo ricarichiamo senza chiuderlo
         const drawer = document.getElementById('advGlobalDrawer');
         if (drawer && drawer.classList.contains('open') && AdvancedTable.activeRecordId) {
             AdvancedTable.openRecordView(tableId, AdvancedTable.activeRecordId);
         } else {
-            // Se eravamo sulla griglia classica, chiudiamo il menu e aggiorniamo il widget
             const realTableId = AdvancedTable._resolveSourceId(tableId);
             AdvancedTable.updateDependentViews(realTableId);
             UI.Menu.closeAll(true);
@@ -558,7 +550,10 @@ const AdvancedTableColumnMenus = {
             }
         }
 
+        // Pre-valutazione calcolo mappa valori in memoria
         const newSelectOptions = new Set();
+        const pendingRowValues = new Map();
+        const recordNoteIdsToDelete = [];
 
         state.rows.forEach(r => {
             let oldVal;
@@ -570,13 +565,16 @@ const AdvancedTableColumnMenus = {
 
             if (oldType === 'record_note') {
                 if (r.cells[colId]) {
-                    UI.Trash.forceHardDeleteRecursive(r.cells[colId]);
+                    recordNoteIdsToDelete.push(r.cells[colId]);
+                    hasDataLoss = true;
                 }
                 newVal = '';
-                hasDataLoss = true;
             }
             else if (newType === 'created_time' || newType === 'last_edited_time' || newType === 'formula' || newType === 'rollup' || newType === 'record_note' || newType === 'button') {
                 newVal = '';
+                if (oldVal !== undefined && oldVal !== null && oldVal !== '' && !(Array.isArray(oldVal) && oldVal.length === 0)) {
+                    hasDataLoss = true;
+                }
             }
             else if (oldVal === undefined || oldVal === null || oldVal === '') {
                 newVal = newType === 'checkbox' ? false : (newType === 'multi-select' ?[] : '');
@@ -634,6 +632,7 @@ const AdvancedTableColumnMenus = {
                         break;
                     case 'time':
                         newVal = strVal.length >= 5 ? strVal.substring(0, 5) : '';
+                        if (!newVal && strVal !== '') hasDataLoss = true;
                         break;
                     case 'select':
                         newVal = strVal.substring(0, 50);
@@ -650,13 +649,28 @@ const AdvancedTableColumnMenus = {
                         break;
                 }
             }
-            r.cells[colId] = newVal;
+            pendingRowValues.set(r.id, newVal);
         });
 
+        // Conferma preventiva se presente perdita di dati
         if (hasDataLoss) {
             const proceed = confirm("Attenzione: Alcuni dati in questa colonna non sono compatibili con il nuovo formato (o verranno distrutte le pagine associate) e andranno persi. Vuoi procedere comunque?");
             if (!proceed) return;
         }
+
+        // Solo dopo conferma esplicita procediamo all'eliminazione delle pagine fisiche
+        if (recordNoteIdsToDelete.length > 0 && typeof UI !== 'undefined' && UI.Trash) {
+            recordNoteIdsToDelete.forEach(noteId => {
+                UI.Trash.forceHardDeleteRecursive(noteId);
+            });
+        }
+
+        // Applica i nuovi valori a tutte le righe
+        state.rows.forEach(r => {
+            if (pendingRowValues.has(r.id)) {
+                r.cells[colId] = pendingRowValues.get(r.id);
+            }
+        });
 
         col.type = newType;
         if (col.hasEndDate) delete col.hasEndDate;
@@ -735,8 +749,10 @@ const AdvancedTableColumnMenus = {
     },
 
     deleteCol: (tableId, colId) => {
-        let state = AdvancedTable.getState(tableId);
+        const realTableId = AdvancedTable._resolveSourceId(tableId);
+        let state = AdvancedTable.getState(realTableId);
         const col = state.columns.find(c => c.id === colId);
+        if (!col) return;
 
         if (col.type === 'relation_backlink') {
             if (!confirm(`Nascondere questa colonna? (L'opzione "Mostra nel database collegato" verrà disattivata nell'origine).`)) {
@@ -756,8 +772,8 @@ const AdvancedTableColumnMenus = {
             }
             
             state.columns = state.columns.filter(c => c.id !== colId);
-            AdvancedTable.setState(tableId, state);
-            AdvancedTable.updateDependentViews(tableId);
+            AdvancedTable.setState(realTableId, state);
+            AdvancedTable.updateDependentViews(realTableId);
             Store.triggerAutoSave();
             AdvancedTable.closeDropdowns(true);
             return;
@@ -782,7 +798,7 @@ const AdvancedTableColumnMenus = {
                             if (cDef.type === 'formula' && cDef.formula && cDef.formula.includes(searchPattern)) {
                                 isUsedInFormula = true;
                             }
-                            if ((cDef.type === 'relation' || cDef.type === 'rollup') && cDef.targetColId === colId && cDef.targetTableId === tableId) {
+                            if ((cDef.type === 'relation' || cDef.type === 'rollup') && cDef.targetColId === colId && cDef.targetTableId === realTableId) {
                                 isTargetOfRelation = true;
                                 pointingTableName = s.title;
                             }
@@ -825,17 +841,82 @@ const AdvancedTableColumnMenus = {
             }
         }
 
+        // Rimozione fisica della colonna
         state.columns = state.columns.filter(c => c.id !== colId);
-        if (!state.isView) state.rows.forEach(r => delete r.cells[colId]);
+        
+        // Pulizia celle solo per tabelle fisiche (non viste collegate o pivot)
+        if (!state.isLinkedView && !state.isPivot) {
+            state.rows.forEach(r => delete r.cells[colId]);
+        }
         if (state.selectOptions && state.selectOptions[colId]) delete state.selectOptions[colId];
         if (state.selectColors && state.selectColors[colId]) delete state.selectColors[colId];
 
-        AdvancedTable.setState(tableId, state);
+        // Pulizia a cascata dello stato da configurazioni orfane per prevenire crash
+        const sanitizeTableConfig = (tState) => {
+            if (!tState) return;
+
+            // Filtri attivi
+            if (tState.filters && tState.filters[colId]) {
+                delete tState.filters[colId];
+            }
+
+            // Ordinamenti
+            if (Array.isArray(tState.sorts)) {
+                tState.sorts = tState.sorts.filter(s => s.colId !== colId);
+            }
+
+            // Regole di formattazione condizionale
+            if (Array.isArray(tState.conditionalColors)) {
+                tState.conditionalColors.forEach(rule => {
+                    if (Array.isArray(rule.conditions)) {
+                        rule.conditions = rule.conditions.filter(cond => cond.colId !== colId);
+                    }
+                });
+                tState.conditionalColors = tState.conditionalColors.filter(rule => rule.conditions && rule.conditions.length > 0);
+            }
+
+            // Configurazione visibilità viste
+            if (tState.viewConfig) {
+                Object.keys(tState.viewConfig).forEach(vKey => {
+                    if (tState.viewConfig[vKey] && Array.isArray(tState.viewConfig[vKey].hiddenCols)) {
+                        tState.viewConfig[vKey].hiddenCols = tState.viewConfig[vKey].hiddenCols.filter(id => id !== colId);
+                    }
+                });
+            }
+
+            // Reset raggruppamenti speciali se legati alla colonna eliminata
+            if (tState.boardGroupBy === colId) {
+                delete tState.boardGroupBy;
+                if (tState.viewType === 'board') tState.viewType = 'table';
+            }
+            if (tState.calendarDateCol === colId) {
+                delete tState.calendarDateCol;
+                if (tState.viewType === 'calendar') tState.viewType = 'table';
+            }
+            if (tState.timelineDateCol === colId) {
+                delete tState.timelineDateCol;
+                if (tState.viewType === 'timeline') tState.viewType = 'table';
+            }
+        };
+
+        sanitizeTableConfig(state);
+        AdvancedTable.setState(realTableId, state);
+
+        // Allineamento a cascata su tutte le viste collegate dipendenti
+        if (AppState.databases) {
+            Object.keys(AppState.databases).forEach(id => {
+                const depState = AppState.databases[id];
+                if (depState && depState.sourceTableId === realTableId) {
+                    sanitizeTableConfig(depState);
+                    AdvancedTable.setState(id, depState);
+                }
+            });
+        }
         
-        if (tableId === 'SYS_PROPERTIES_DB' && AdvancedTable.activeRecordId) {
-            AdvancedTable.openRecordView(tableId, AdvancedTable.activeRecordId);
+        if (realTableId === 'SYS_PROPERTIES_DB' && AdvancedTable.activeRecordId) {
+            AdvancedTable.openRecordView(realTableId, AdvancedTable.activeRecordId);
         } else {
-            AdvancedTable.updateDependentViews(tableId);
+            AdvancedTable.updateDependentViews(realTableId);
         }
         
         Store.triggerAutoSave();

@@ -7,15 +7,6 @@
 
 Object.assign(AdvancedTable, {
 
-    updateTitle: (tableId, newTitle) => {
-        if (!tableId) return;
-        let state = AdvancedTable.getState(tableId);
-        if (!state) return;
-        state.title = newTitle;
-        AdvancedTable.setState(tableId, state);
-        Store.triggerAutoSave();
-    },
-
     touchRecordUpdate: (tableId, rowId) => {
         if (!tableId || !rowId) return;
         const realTableId = AdvancedTable._resolveSourceId(tableId);
